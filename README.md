@@ -1,3 +1,3 @@
 # test
 
-commit message : updtae test
+commit message : fix typo
