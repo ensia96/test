@@ -1,27 +1,39 @@
 import { createServer } from 'http';
-import { readFileSync, existsSync } from 'fs';
 import { WebSocketServer } from 'ws';
+import { readFileSync, existsSync, statSync } from 'fs';
+import { join, extname } from 'path';
+import { fileURLToPath } from 'url';
 import pty from 'node-pty';
+
+const __dirname = fileURLToPath(new URL('.', import.meta.url));
+const DIST_DIR = join(__dirname, 'dist');
 
 const MIME_TYPES = {
   '.html': 'text/html',
-  '.js': 'text/javascript',
+  '.js': 'application/javascript',
   '.css': 'text/css',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
   '.woff': 'font/woff',
   '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
 };
 
 const server = createServer((req, res) => {
-  const url = req.url === '/' ? '/index.html' : decodeURIComponent(req.url);
-  const file = url.slice(1);
-  const ext = file.includes('.') ? '.' + file.split('.').pop() : '.html';
+  let filePath = join(DIST_DIR, req.url === '/' ? 'index.html' : decodeURIComponent(req.url));
   
-  if (existsSync(file)) {
-    res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'text/plain' });
-    res.end(readFileSync(file));
-  } else {
+  if (!existsSync(filePath) || !statSync(filePath).isFile()) {
+    filePath = join(DIST_DIR, 'index.html');
+  }
+  
+  try {
+    const content = readFileSync(filePath);
+    const ext = extname(filePath);
+    res.writeHead(200, { 'Content-Type': MIME_TYPES[ext] || 'application/octet-stream' });
+    res.end(content);
+  } catch {
     res.writeHead(404);
     res.end('Not Found');
   }
@@ -66,6 +78,7 @@ wss.on('connection', (ws) => {
   });
 
   ptyProcess.onData((data) => {
+    console.log(`[PTY→WS] ${JSON.stringify(data)}`);
     if (ws.readyState === ws.OPEN) {
       ws.send(data);
     }
@@ -78,9 +91,13 @@ wss.on('connection', (ws) => {
   ws.on('pong', () => { ws.isAlive = true; });
 
   ws.on('message', (msg) => {
+    const raw = msg.toString();
+    console.log(`[WS→PTY] raw: ${JSON.stringify(raw)}, bytes: [${Buffer.from(raw).toString('hex').match(/.{2}/g)?.join(' ')}]`);
+    
     try {
-      const data = JSON.parse(msg.toString());
+      const data = JSON.parse(raw);
       if (data.type === 'input') {
+        console.log(`[WS→PTY] input: ${JSON.stringify(data.data)}`);
         ptyProcess.write(data.data);
       } else if (data.type === 'resize') {
         const cols = Math.max(1, Math.min(500, data.cols || 80));
@@ -88,7 +105,9 @@ wss.on('connection', (ws) => {
         ptyProcess.resize(cols, rows);
       }
     } catch (e) {
-      // JSON 파싱 실패 시 무시
+      // JSON 아닌 경우 직접 전달 (진단용)
+      console.log(`[WS→PTY] direct: ${JSON.stringify(raw)}, bytes: [${Buffer.from(raw).toString('hex').match(/.{2}/g)?.join(' ')}]`);
+      ptyProcess.write(raw);
     }
   });
 
