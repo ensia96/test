@@ -1,0 +1,852 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="theme-color" content="#282828" />
+    <title>Terminal</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/css/xterm.min.css"
+    />
+    <style>
+      @font-face {
+        font-family: "MesloLGS NF";
+        src: url("/fonts/MesloLGS NF Regular.ttf") format("truetype");
+        font-weight: normal;
+        font-style: normal;
+      }
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
+        background: #282828;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        padding-top: env(safe-area-inset-top, 0px);
+      }
+      #terminal-container {
+        flex: 1;
+        min-height: 100px;
+        position: relative;
+        overflow: hidden;
+        touch-action: none;
+      }
+      #terminal {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        height: 100%;
+      }
+      #touch-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 10;
+        touch-action: none;
+        background: transparent;
+      }
+      /* 커스텀 IME 처리 비활성화
+      #ime-input {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: 1px;
+        height: 1px;
+        font-size: 16px;
+        z-index: 5;
+        pointer-events: none;
+        caret-color: transparent;
+        color: transparent;
+        background: transparent;
+        border: none;
+        outline: none;
+        opacity: 0;
+      }
+      */
+      #toolbar {
+        display: flex;
+        gap: 8px;
+        padding: 8px;
+        padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+        background: #1d2021;
+        overflow-x: auto;
+        flex-shrink: 0;
+      }
+      #toolbar button {
+        padding: 8px 16px;
+        background: #3c3836;
+        color: #ebdbb2;
+        border: none;
+        border-radius: 4px;
+        font:
+          14px Menlo,
+          Monaco,
+          monospace;
+        flex-shrink: 0;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+      #toolbar button:active {
+        background: #504945;
+      }
+      #toolbar button.active {
+        background: #98971a;
+        color: #282828;
+      }
+      /* 커스텀 IME 처리 비활성화
+      #preview {
+        position: fixed;
+        left: 50%;
+        bottom: 70px;
+        transform: translateX(-50%);
+        background: rgba(40, 40, 40, 0.98);
+        color: #fbf1c7;
+        padding: 10px 20px;
+        border-radius: 10px;
+        border: 2px solid #665c54;
+        font-size: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        display: none;
+        z-index: 9999;
+        pointer-events: none;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+        min-width: 50px;
+        text-align: center;
+      }
+      */
+    </style>
+  </head>
+  <body>
+    <!-- 커스텀 IME 처리 비활성화
+    <div id="preview"></div>
+    -->
+    <div id="terminal-container">
+      <div id="terminal"></div>
+      <div id="touch-overlay"></div>
+      <!-- 커스텀 IME 처리 비활성화
+      <input
+        type="text"
+        id="ime-input"
+        autocomplete="off"
+        autocorrect="off"
+        autocapitalize="off"
+        spellcheck="false"
+      />
+      -->
+    </div>
+    <div id="toolbar">
+      <button id="btn-ctrl">Ctrl</button>
+      <button id="btn-opt">Opt</button>
+      <button id="btn-esc">ESC</button>
+      <button id="btn-tab">Tab</button>
+      <button id="btn-bs">BS</button>
+      <button id="btn-up">Up</button>
+      <button id="btn-down">Down</button>
+      <button id="btn-left">Left</button>
+      <button id="btn-right">Right</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@6.0.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-fit@0.11.0/lib/addon-fit.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@xterm/addon-unicode11@0.9.0/lib/addon-unicode11.min.js"></script>
+    <script>
+      // Terminal
+      const term = new Terminal({
+        allowProposedApi: true,
+        fontFamily: '"MesloLGS NF", Menlo, Monaco, "Courier New", monospace',
+        fontSize: 14,
+        cursorBlink: true,
+        scrollback: 2000,
+        theme: {
+          background: "#282828",
+          foreground: "#ebdbb2",
+          cursor: "#ebdbb2",
+          black: "#282828",
+          red: "#cc241d",
+          green: "#98971a",
+          yellow: "#d79921",
+          blue: "#458588",
+          magenta: "#b16286",
+          cyan: "#689d6a",
+          white: "#a89984",
+          brightBlack: "#928374",
+          brightRed: "#fb4934",
+          brightGreen: "#b8bb26",
+          brightYellow: "#fabd2f",
+          brightBlue: "#83a598",
+          brightMagenta: "#d3869b",
+          brightCyan: "#8ec07c",
+          brightWhite: "#ebdbb2",
+        },
+      });
+
+      const fit = new FitAddon.FitAddon();
+      const unicode11 = new Unicode11Addon.Unicode11Addon();
+      term.loadAddon(fit);
+      term.loadAddon(unicode11);
+      term.unicode.activeVersion = "11";
+
+      const termContainer = document.getElementById("terminal-container");
+      const termEl = document.getElementById("terminal");
+      const touchOverlay = document.getElementById("touch-overlay");
+      const toolbar = document.getElementById("toolbar");
+      // 커스텀 IME 처리 비활성화
+      // const preview = document.getElementById("preview");
+      // const ime = document.getElementById("ime-input");
+      const ctrlBtn = document.getElementById("btn-ctrl");
+      const optBtn = document.getElementById("btn-opt");
+
+      term.open(termEl);
+
+      // Layout
+      const adjustLayout = () => {
+        if (window.visualViewport) {
+          document.body.style.height = window.visualViewport.height + "px";
+        }
+        fit.fit();
+        if (ws && ws.readyState === 1) {
+          ws.send(
+            JSON.stringify({
+              type: "resize",
+              cols: term.cols,
+              rows: term.rows,
+            }),
+          );
+        }
+      };
+
+      window.addEventListener("resize", adjustLayout);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", adjustLayout);
+        window.visualViewport.addEventListener("scroll", () =>
+          window.scrollTo(0, 0),
+        );
+      }
+      setTimeout(adjustLayout, 100);
+
+      // WebSocket
+      let ws = null;
+      let reconnectTimer = null;
+      let intentionalClose = false;
+
+      const disconnect = () => {
+        intentionalClose = true;
+        if (reconnectTimer) {
+          clearTimeout(reconnectTimer);
+          reconnectTimer = null;
+        }
+        if (ws) {
+          ws.close(1000, "client close");
+          ws = null;
+        }
+      };
+
+      const connect = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) return;
+        intentionalClose = false;
+
+        const url = `ws://${location.host}`;
+        ws = new WebSocket(url);
+
+        ws.onopen = () => {
+          term.write("\x1b[32m[Connected]\x1b[0m\r\n");
+          adjustLayout();
+        };
+
+        ws.onmessage = (e) => term.write(e.data);
+
+        ws.onclose = () => {
+          term.write("\r\n\x1b[33m[Disconnected]\x1b[0m\r\n");
+          if (!intentionalClose && !reconnectTimer) {
+            reconnectTimer = setTimeout(() => {
+              reconnectTimer = null;
+              connect();
+            }, 2000);
+          }
+        };
+      };
+
+      const send = (data) =>
+        ws &&
+        ws.readyState === 1 &&
+        ws.send(JSON.stringify({ type: "input", data }));
+
+      window.addEventListener("beforeunload", disconnect);
+      window.addEventListener("pagehide", disconnect);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden && (!ws || ws.readyState !== WebSocket.OPEN))
+          connect();
+      });
+
+      connect();
+
+      // Input state
+      let ctrlOn = false;
+      let optOn = false;
+      // 커스텀 IME 처리 비활성화
+      // let isComposing = false;
+      // let lastComposedText = "";
+
+      // 한글 조합 범위 확인 - 커스텀 IME 처리 비활성화
+      // const hasKorean = (s) => /[\u3131-\u3163\uAC00-\uD7A3]/.test(s);
+
+      // Ctrl 문자 변환
+      const ctrlChar = (c) => {
+        const code = c.toUpperCase().charCodeAt(0);
+        return code >= 65 && code <= 90 ? String.fromCharCode(code - 64) : c;
+      };
+
+      // 프리뷰 표시/숨김 - 커스텀 IME 처리 비활성화
+      /*
+      const showPreview = () => {
+        const text = ime.value;
+        if (text) {
+          preview.textContent = text;
+          preview.style.display = "block";
+          preview.style.bottom =
+            window.innerHeight -
+            toolbar.getBoundingClientRect().top +
+            10 +
+            "px";
+        } else {
+          preview.style.display = "none";
+        }
+      };
+
+      const hidePreview = () => {
+        preview.style.display = "none";
+        preview.textContent = "";
+      };
+      */
+
+      // 텍스트 전송 (모디파이어 적용)
+      const sendText = (text) => {
+        if (!text) return;
+        let data = text;
+        if (ctrlOn) {
+          data = text.split("").map(ctrlChar).join("");
+          ctrlOn = false;
+          ctrlBtn.classList.remove("active");
+        } else if (optOn) {
+          data = text
+            .split("")
+            .map((c) => "\x1b" + c)
+            .join("");
+          optOn = false;
+          optBtn.classList.remove("active");
+        }
+        send(data);
+      };
+
+      // 커스텀 IME 처리 비활성화
+      /*
+      // 입력 필드 초기화 및 프리뷰 숨김
+      const clearInput = () => {
+        ime.value = "";
+        lastComposedText = "";
+        hidePreview();
+      };
+
+      // IME compositionstart: 조합 시작
+      ime.addEventListener("compositionstart", () => {
+        isComposing = true;
+        lastComposedText = ime.value;
+      });
+
+      // IME compositionupdate: 조합 중
+      ime.addEventListener("compositionupdate", (e) => {
+        showPreview();
+      });
+
+      // IME compositionend: 조합 완료
+      ime.addEventListener("compositionend", (e) => {
+        isComposing = false;
+        const text = e.data;
+        if (text) {
+          sendText(text);
+          clearInput();
+        }
+      });
+
+      // Input 이벤트: 비조합 문자 즉시 전송
+      ime.addEventListener("input", (e) => {
+        if (isComposing) {
+          showPreview();
+          return;
+        }
+        const text = ime.value;
+        if (text && !hasKorean(text)) {
+          sendText(text);
+          clearInput();
+        } else if (text) {
+          showPreview();
+        }
+      });
+      */
+
+      // 백스페이스 반복 처리
+      let bsInterval = null;
+      let bsTimeout = null;
+      const BS_INITIAL_DELAY = 400;
+      const BS_REPEAT_INTERVAL = 50;
+
+      const startBsRepeat = () => {
+        send("\x7f");
+        bsTimeout = setTimeout(() => {
+          bsInterval = setInterval(() => send("\x7f"), BS_REPEAT_INTERVAL);
+        }, BS_INITIAL_DELAY);
+      };
+
+      const stopBsRepeat = () => {
+        if (bsTimeout) {
+          clearTimeout(bsTimeout);
+          bsTimeout = null;
+        }
+        if (bsInterval) {
+          clearInterval(bsInterval);
+          bsInterval = null;
+        }
+      };
+
+      // 키보드 입력 정규화
+      const normalizeKey = (e) => {
+        // e.code 기반으로 물리적 키 위치 확인
+        const code = e.code || "";
+        if (code.startsWith("Key")) {
+          return code.slice(3).toLowerCase();
+        }
+        if (code.startsWith("Digit")) {
+          return code.slice(5);
+        }
+        return e.key;
+      };
+
+      // 커스텀 IME 처리 비활성화 - ime 입력 이벤트 핸들러들
+      /*
+      ime.addEventListener("keydown", (e) => {
+        // 모디파이어 키 단독 입력 무시
+        if (["Control", "Alt", "Shift", "Meta", "CapsLock"].includes(e.key))
+          return;
+
+        // IME 조합 중에는 특수키만 처리
+        if (isComposing) {
+          if (e.key === "Enter") {
+            // 조합 강제 완료 후 엔터
+            return;
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            clearInput();
+            isComposing = false;
+            return;
+          }
+          return;
+        }
+
+        const text = ime.value;
+
+        // 하드웨어 키보드 Ctrl 조합
+        if (e.ctrlKey && !e.metaKey && !e.altKey) {
+          const key = normalizeKey(e);
+          if (key.length === 1 && key >= "a" && key <= "z") {
+            e.preventDefault();
+            if (text) {
+              sendText(text);
+              clearInput();
+            }
+            send(String.fromCharCode(key.charCodeAt(0) - 96));
+            return;
+          }
+          if (key === "[" || e.key === "[") {
+            e.preventDefault();
+            if (text) {
+              sendText(text);
+              clearInput();
+            }
+            send("\x1b");
+            return;
+          }
+        }
+
+        // 하드웨어 키보드 Alt/Option 조합
+        if (e.altKey && !e.metaKey && !e.ctrlKey) {
+          e.preventDefault();
+          if (text) {
+            sendText(text);
+            clearInput();
+          }
+          if (e.key === "Enter") {
+            send("\x1b\r");
+          } else if (e.key === "Backspace") {
+            send("\x1b\x7f");
+          } else if (e.key === "ArrowLeft") {
+            send("\x1bb");
+          } else if (e.key === "ArrowRight") {
+            send("\x1bf");
+          } else {
+            const key = normalizeKey(e);
+            if (key.length === 1) {
+              send("\x1b" + key);
+            }
+          }
+          return;
+        }
+
+        if (e.key === " ") {
+          e.preventDefault();
+          sendText(text ? text + " " : " ");
+          clearInput();
+          return;
+        }
+
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (text) sendText(text);
+          if (optOn) {
+            send("\x1b\r");
+            optOn = false;
+            optBtn.classList.remove("active");
+          } else {
+            send("\r");
+          }
+          clearInput();
+          return;
+        }
+
+        if (e.key === "Backspace") {
+          if (text) {
+            setTimeout(showPreview, 0);
+            return;
+          }
+          e.preventDefault();
+          if (e.repeat) {
+            send("\x7f");
+          } else if (!bsInterval && !bsTimeout) {
+            startBsRepeat();
+          }
+          return;
+        }
+
+        const keys = {
+          Tab: "\t",
+          Escape: "\x1b",
+          ArrowUp: "\x1b[A",
+          ArrowDown: "\x1b[B",
+          ArrowLeft: "\x1b[D",
+          ArrowRight: "\x1b[C",
+          Home: "\x1b[H",
+          End: "\x1b[F",
+          PageUp: "\x1b[5~",
+          PageDown: "\x1b[6~",
+          Delete: "\x1b[3~",
+        };
+
+        if (keys[e.key]) {
+          e.preventDefault();
+          if (text) {
+            sendText(text);
+            clearInput();
+          }
+          send(keys[e.key]);
+        }
+      });
+
+      ime.addEventListener("keyup", (e) => {
+        if (e.key === "Backspace") {
+          stopBsRepeat();
+        }
+      });
+
+      // 포커스 잃으면 반복 중지
+      ime.addEventListener("blur", stopBsRepeat);
+      */
+
+      // Terminal click - xterm.js 기본 IME 사용
+      termContainer.onclick = () => term.focus();
+
+      // Toolbar buttons (일반)
+      const btn = (id, action) => {
+        const el = document.getElementById(id);
+        el.ontouchstart = (e) => {
+          e.preventDefault();
+          action();
+          term.focus();
+        };
+        el.onmousedown = (e) => e.preventDefault();
+        el.onclick = (e) => {
+          e.preventDefault();
+          action();
+          term.focus();
+        };
+      };
+
+      // Toolbar buttons (꾹 누르기 반복)
+      const repeatBtn = (id, action) => {
+        const el = document.getElementById(id);
+        let intervalId = null;
+        let timeoutId = null;
+        const INITIAL_DELAY = 400;
+        const REPEAT_INTERVAL = 50;
+
+        const start = () => {
+          action();
+          timeoutId = setTimeout(() => {
+            intervalId = setInterval(action, REPEAT_INTERVAL);
+          }, INITIAL_DELAY);
+        };
+
+        const stop = () => {
+          if (timeoutId) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          if (intervalId) {
+            clearInterval(intervalId);
+            intervalId = null;
+          }
+          term.focus();
+        };
+
+        el.addEventListener("touchstart", (e) => {
+          e.preventDefault();
+          start();
+        });
+        el.addEventListener("touchend", stop);
+        el.addEventListener("touchcancel", stop);
+        el.addEventListener("mousedown", (e) => {
+          e.preventDefault();
+          start();
+        });
+        el.addEventListener("mouseup", stop);
+        el.addEventListener("mouseleave", stop);
+      };
+
+      btn("btn-ctrl", () => {
+        ctrlOn = !ctrlOn;
+        optOn = false;
+        ctrlBtn.classList.toggle("active", ctrlOn);
+        optBtn.classList.remove("active");
+      });
+      btn("btn-opt", () => {
+        optOn = !optOn;
+        ctrlOn = false;
+        optBtn.classList.toggle("active", optOn);
+        ctrlBtn.classList.remove("active");
+      });
+      btn("btn-esc", () => send("\x1b"));
+      btn("btn-tab", () => send("\t"));
+
+      // 꾹 누르기 지원 버튼
+      repeatBtn("btn-bs", () => send("\x7f"));
+      repeatBtn("btn-up", () => send("\x1b[A"));
+      repeatBtn("btn-down", () => send("\x1b[B"));
+      repeatBtn("btn-left", () => send("\x1b[D"));
+      repeatBtn("btn-right", () => send("\x1b[C"));
+
+      // xterm.js 기본 IME 사용 - term.onData로 입력 전송
+      term.onData((data) => {
+        sendText(data);
+      });
+
+      setTimeout(() => term.focus(), 100);
+
+      // Selection copy
+      term.onSelectionChange(() => {
+        const sel = term.getSelection();
+        if (sel) navigator.clipboard.writeText(sel).catch(() => {});
+      });
+
+      // ===== Touch scroll & tap click =====
+      const PX_PER_LINE = 20;
+      const TAP_THRESHOLD = 15;
+      const TAP_TIME = 300;
+      const VELOCITY_THRESHOLD = 0.5;
+      const FRICTION = 0.95;
+
+      let startX = 0;
+      let startY = 0;
+      let startTime = 0;
+      let lastY = 0;
+      let lastTime = 0;
+      let currentScrollLines = 0;
+      let isScrolling = false;
+      let velocityY = 0;
+      let momentumAnimationId = null;
+
+      const scrollUp = () => {
+        send(
+          `\x1b[<64;${Math.floor(term.cols / 2)};${Math.floor(term.rows / 2)}M`,
+        );
+        term.scrollLines(-1);
+      };
+
+      const scrollDown = () => {
+        send(
+          `\x1b[<65;${Math.floor(term.cols / 2)};${Math.floor(term.rows / 2)}M`,
+        );
+        term.scrollLines(1);
+      };
+
+      const sendMouseClick = (x, y) => {
+        const termRect = termEl.getBoundingClientRect();
+        const cellWidth = termRect.width / term.cols;
+        const cellHeight = termRect.height / term.rows;
+
+        const col = Math.floor((x - termRect.left) / cellWidth) + 1;
+        const row = Math.floor((y - termRect.top) / cellHeight) + 1;
+
+        send(`\x1b[<0;${col};${row}M`);
+        send(`\x1b[<0;${col};${row}m`);
+      };
+
+      // 모멘텀 스크롤 중지
+      const stopMomentum = () => {
+        if (momentumAnimationId) {
+          cancelAnimationFrame(momentumAnimationId);
+          momentumAnimationId = null;
+        }
+        velocityY = 0;
+      };
+
+      // 모멘텀 스크롤 애니메이션
+      let momentumAccum = 0;
+      const animateMomentum = () => {
+        if (Math.abs(velocityY) < VELOCITY_THRESHOLD) {
+          stopMomentum();
+          return;
+        }
+
+        momentumAccum += velocityY;
+        while (Math.abs(momentumAccum) >= PX_PER_LINE) {
+          if (momentumAccum > 0) {
+            scrollDown();
+            momentumAccum -= PX_PER_LINE;
+          } else {
+            scrollUp();
+            momentumAccum += PX_PER_LINE;
+          }
+        }
+
+        velocityY *= FRICTION;
+        momentumAnimationId = requestAnimationFrame(animateMomentum);
+      };
+
+      const onTouchStart = (e) => {
+        if (e.touches.length !== 1) return;
+        e.preventDefault();
+        stopMomentum();
+        isScrolling = true;
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        lastY = startY;
+        startTime = Date.now();
+        lastTime = startTime;
+        currentScrollLines = 0;
+      };
+
+      const onTouchMove = (e) => {
+        if (!isScrolling || e.touches.length !== 1) return;
+        e.preventDefault();
+
+        const currentY = e.touches[0].clientY;
+        const now = Date.now();
+        const dt = now - lastTime;
+
+        // 속도 계산 (모멘텀용)
+        if (dt > 0) {
+          velocityY = (lastY - currentY) / dt * 16;
+        }
+
+        lastY = currentY;
+        lastTime = now;
+
+        const totalDelta = startY - currentY;
+        const targetLines = Math.floor(totalDelta / PX_PER_LINE);
+        const diff = targetLines - currentScrollLines;
+
+        if (diff > 0) {
+          for (let i = 0; i < diff; i++) scrollDown();
+        } else if (diff < 0) {
+          for (let i = 0; i < Math.abs(diff); i++) scrollUp();
+        }
+
+        currentScrollLines = targetLines;
+      };
+
+      const onTouchEnd = (e) => {
+        if (!isScrolling) return;
+        e.preventDefault();
+
+        const touch = e.changedTouches[0];
+        const endX = touch?.clientX || startX;
+        const endY = touch?.clientY || startY;
+        const movedY = Math.abs(endY - startY);
+        const elapsed = Date.now() - startTime;
+
+        // 탭 → 클릭
+        if (movedY < TAP_THRESHOLD && elapsed < TAP_TIME) {
+          sendMouseClick(endX, endY);
+          stopMomentum();
+        } else if (Math.abs(velocityY) > VELOCITY_THRESHOLD) {
+          // 모멘텀 스크롤 시작
+          momentumAccum = 0;
+          animateMomentum();
+        }
+
+        isScrolling = false;
+        currentScrollLines = 0;
+      };
+
+      // 오버레이에서 터치 이벤트 처리
+      touchOverlay.addEventListener("touchstart", onTouchStart, {
+        passive: false,
+      });
+      touchOverlay.addEventListener("touchmove", onTouchMove, {
+        passive: false,
+      });
+      touchOverlay.addEventListener("touchend", onTouchEnd, { passive: false });
+      touchOverlay.addEventListener("touchcancel", (e) => {
+        stopMomentum();
+        onTouchEnd(e);
+      }, { passive: false });
+
+      // Mouse wheel
+      let wheelAccum = 0;
+      touchOverlay.addEventListener(
+        "wheel",
+        (e) => {
+          e.preventDefault();
+          stopMomentum();
+          wheelAccum += e.deltaY / 3;
+          while (Math.abs(wheelAccum) >= PX_PER_LINE) {
+            if (wheelAccum > 0) {
+              scrollDown();
+              wheelAccum -= PX_PER_LINE;
+            } else {
+              scrollUp();
+              wheelAccum += PX_PER_LINE;
+            }
+          }
+        },
+        { passive: false },
+      );
+    </script>
+  </body>
+</html>
