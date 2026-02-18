@@ -1,12 +1,13 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export default function Session({ websocketURL }: SessionProps) {
   const fitReference = useRef<FitAddon | null>(null);
   const inputReference = useRef<HTMLTextAreaElement | null>(null);
   const terminalReference = useRef<HTMLDivElement>(null);
+  const termReference = useRef<Terminal | null>(null);
   const touchOverlayReference = useRef<HTMLDivElement>(null);
   const websocketReference = useRef<WebSocket | null>(null);
 
@@ -15,6 +16,7 @@ export default function Session({ websocketURL }: SessionProps) {
     keyboard: 0,
     opt: 0,
   });
+  const [selectedText, setSelectedText] = useState<string | null>(null);
 
   const handleModifier =
     (key: string) => (e: React.MouseEvent | React.TouchEvent) => {
@@ -41,19 +43,6 @@ export default function Session({ websocketURL }: SessionProps) {
       inputReference.current?.focus();
     };
 
-  const handleTouchStart = useCallback((e: TouchEvent) => {
-    if (e.touches.length === 1) e.preventDefault();
-  }, []);
-
-  const handleTouchMove = useCallback((e: TouchEvent) => {
-    if (e.touches.length === 1) e.preventDefault();
-  }, []);
-
-  const handleTouchEnd = useCallback((e: TouchEvent) => {
-    e.preventDefault();
-    inputReference.current?.focus();
-  }, []);
-
   const sendData: WebSocket["send"] = (data) => {
     const websocket = websocketReference.current;
     if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
@@ -65,8 +54,31 @@ export default function Session({ websocketURL }: SessionProps) {
     }));
   };
 
+  const handleCopy = () => {
+    const text = selectedText;
+    if (!text) return;
+    setSelectedText(null);
+    termReference.current?.clearSelection();
+    const fallbackCopy = (str: string) => {
+      const textarea = document.createElement("textarea");
+      textarea.value = str;
+      textarea.style.cssText = "position:fixed;left:-9999px;";
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+    } else {
+      fallbackCopy(text);
+    }
+  };
+
   useEffect(() => {
     if (!terminalReference.current) return;
+
+    // === Terminal 초기화 ===
     const term = new Terminal({
       fontFamily: '"MesloLGS NF", Menlo, Monaco, "Courier New", monospace',
       fontSize: 14,
@@ -95,6 +107,7 @@ export default function Session({ websocketURL }: SessionProps) {
       },
     });
     term.open(terminalReference.current);
+    termReference.current = term;
     term.focus = () => inputReference.current?.focus();
     const xterm = terminalReference.current.querySelector<HTMLTextAreaElement>(
       ".xterm-helper-textarea",
@@ -105,6 +118,8 @@ export default function Session({ websocketURL }: SessionProps) {
       xterm.style.pointerEvents = "none";
       xterm.tabIndex = -1;
     }
+
+    // === WebSocket 연결 ===
     websocketReference.current = new WebSocket(
       websocketURL ?? `ws://${window.location.host}`,
     );
@@ -121,10 +136,13 @@ export default function Session({ websocketURL }: SessionProps) {
         JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
       );
     };
+
+    // === 입력 처리 ===
     inputReference.current = document.createElement("textarea");
     inputReference.current.addEventListener("beforeinput", (e: InputEvent) => {
       if (websocketReference.current!.readyState !== WebSocket.OPEN) return;
       if (e.inputType === "insertText" && e.data) sendData(e.data);
+      if (e.inputType === "insertFromPaste" && e.data) sendData(e.data);
       if (e.inputType === "deleteContentBackward") sendData("\x7f");
       if (e.inputType === "insertLineBreak") sendData("\r");
     });
@@ -178,26 +196,8 @@ export default function Session({ websocketURL }: SessionProps) {
     `;
     terminalReference.current.appendChild(inputReference.current);
     inputReference.current.focus();
-    touchOverlayReference.current?.addEventListener(
-      "touchstart",
-      handleTouchStart,
-      { passive: false },
-    );
-    touchOverlayReference.current?.addEventListener(
-      "touchmove",
-      handleTouchMove,
-      { passive: false },
-    );
-    touchOverlayReference.current?.addEventListener(
-      "touchend",
-      handleTouchEnd,
-      { passive: false },
-    );
-    touchOverlayReference.current?.addEventListener(
-      "touchcancel",
-      handleTouchEnd,
-      { passive: false },
-    );
+
+    // === FitAddon 설정 ===
     const fit = new FitAddon();
     fitReference.current = fit;
     term.loadAddon(fit);
@@ -223,27 +223,180 @@ export default function Session({ websocketURL }: SessionProps) {
     window.addEventListener("resize", handleResize);
     window.visualViewport?.addEventListener("resize", handleResize);
     window.visualViewport?.addEventListener("scroll", handleResize);
+
+    // === 터치 오버레이 처리 ===
+    const overlay = touchOverlayReference.current;
+    let onTouchStart: ((e: TouchEvent) => void) | undefined;
+    let onTouchMove: ((e: TouchEvent) => void) | undefined;
+    let onTouchEnd: ((e: TouchEvent) => void) | undefined;
+    if (overlay) {
+      const TAP_THRESHOLD = 15;
+      const TAP_TIMEOUT = 300;
+      const PX_PER_LINE = 20;
+      const VELOCITY_THRESHOLD = 0.5;
+      const FRICTION = 0.95;
+
+      let startX = 0;
+      let startY = 0;
+      let startTime = 0;
+      let touchMode: "none" | "tap" | "drag" | "scroll" = "none";
+      let dragStartCol = 0;
+      let dragStartRow = 0;
+      let scrollAccumulated = 0;
+      let velocityY = 0;
+      let lastY = 0;
+      let lastTime = 0;
+      let momentumId = 0;
+
+      const getCell = (x: number, y: number) => {
+        const rect = terminalReference.current!.getBoundingClientRect();
+        const cellWidth = rect.width / term.cols;
+        const cellHeight = rect.height / term.rows;
+        return {
+          col: Math.floor((x - rect.left) / cellWidth),
+          row: Math.floor((y - rect.top) / cellHeight),
+        };
+      };
+
+      const copySelection = () => {
+        const text = term.getSelection();
+        if (!text) return;
+        const fallbackCopy = (str: string) => {
+          const textarea = document.createElement("textarea");
+          textarea.value = str;
+          textarea.style.cssText = "position:fixed;opacity:0;";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textarea);
+        };
+        if (navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
+        } else {
+          fallbackCopy(text);
+        }
+      };
+
+      const scrollUp = () => {
+        sendData(
+          `\x1b[<64;${Math.floor(term.cols / 2)};${Math.floor(term.rows / 2)}M`,
+        );
+        term.scrollLines(-1);
+      };
+
+      const scrollDown = () => {
+        sendData(
+          `\x1b[<65;${Math.floor(term.cols / 2)};${Math.floor(term.rows / 2)}M`,
+        );
+        term.scrollLines(1);
+      };
+
+      const animateMomentum = () => {
+        if (Math.abs(velocityY) < VELOCITY_THRESHOLD) return;
+        const lines = Math.trunc(velocityY / PX_PER_LINE);
+        if (lines > 0) for (let i = 0; i < lines; i++) scrollDown();
+        else if (lines < 0) for (let i = 0; i < -lines; i++) scrollUp();
+        velocityY *= FRICTION;
+        momentumId = requestAnimationFrame(animateMomentum);
+      };
+
+      onTouchStart = (e: TouchEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setSelectedText(null);
+        if (e.touches.length === 1) {
+          startX = e.touches[0].clientX;
+          startY = e.touches[0].clientY;
+          startTime = Date.now();
+          touchMode = "tap";
+          term.clearSelection();
+          const { col, row } = getCell(startX, startY);
+          dragStartCol = col;
+          dragStartRow = row;
+        } else if (e.touches.length === 2) {
+          cancelAnimationFrame(momentumId);
+          touchMode = "scroll";
+          const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          startY = avgY;
+          lastY = avgY;
+          lastTime = Date.now();
+          scrollAccumulated = 0;
+          velocityY = 0;
+        }
+      };
+
+      onTouchMove = (e: TouchEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (touchMode === "tap" && e.touches.length === 1) {
+          const dx = e.touches[0].clientX - startX;
+          const dy = e.touches[0].clientY - startY;
+          if (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD) {
+            touchMode = "drag";
+          }
+        }
+        if (touchMode === "drag" && e.touches.length === 1) {
+          const { col, row } = getCell(e.touches[0].clientX, e.touches[0].clientY);
+          const startOffset = dragStartRow * term.cols + dragStartCol;
+          const currentOffset = row * term.cols + col;
+          if (currentOffset >= startOffset) {
+            term.select(dragStartCol, dragStartRow, currentOffset - startOffset + 1);
+          } else {
+            term.select(col, row, startOffset - currentOffset + 1);
+          }
+        } else if (touchMode === "scroll" && e.touches.length === 2) {
+          const currentY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const now = Date.now();
+          const dt = now - lastTime;
+          if (dt > 0) velocityY = ((lastY - currentY) / dt) * 16;
+          lastY = currentY;
+          lastTime = now;
+
+          const deltaY = startY - currentY;
+          startY = currentY;
+          scrollAccumulated += deltaY;
+          const lines = Math.trunc(scrollAccumulated / PX_PER_LINE);
+          if (lines !== 0) {
+            scrollAccumulated -= lines * PX_PER_LINE;
+            if (lines > 0) for (let i = 0; i < lines; i++) scrollDown();
+            else for (let i = 0; i < -lines; i++) scrollUp();
+          }
+        }
+      };
+
+      onTouchEnd = (e: TouchEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (touchMode === "tap" && Date.now() - startTime < TAP_TIMEOUT) {
+          const { col, row } = getCell(startX, startY);
+          sendData(`\x1b[<0;${col + 1};${row + 1}M`);
+          sendData(`\x1b[<0;${col + 1};${row + 1}m`);
+          inputReference.current?.focus();
+        } else if (touchMode === "drag") {
+          const text = term.getSelection();
+          if (text) setSelectedText(text);
+        } else if (touchMode === "scroll") {
+          animateMomentum();
+        }
+        touchMode = "none";
+      };
+
+      overlay.addEventListener("touchstart", onTouchStart, { passive: false });
+      overlay.addEventListener("touchmove", onTouchMove, { passive: false });
+      overlay.addEventListener("touchend", onTouchEnd, { passive: false });
+      overlay.addEventListener("touchcancel", onTouchEnd, { passive: false });
+    }
+
+    // === Cleanup ===
     return () => {
       window.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("scroll", handleResize);
-      if (touchOverlayReference.current) {
-        touchOverlayReference.current.removeEventListener(
-          "touchstart",
-          handleTouchStart,
-        );
-        touchOverlayReference.current.removeEventListener(
-          "touchmove",
-          handleTouchMove,
-        );
-        touchOverlayReference.current.removeEventListener(
-          "touchend",
-          handleTouchEnd,
-        );
-        touchOverlayReference.current.removeEventListener(
-          "touchcancel",
-          handleTouchEnd,
-        );
+      if (overlay && onTouchStart && onTouchMove && onTouchEnd) {
+        overlay.removeEventListener("touchstart", onTouchStart);
+        overlay.removeEventListener("touchmove", onTouchMove);
+        overlay.removeEventListener("touchend", onTouchEnd);
+        overlay.removeEventListener("touchcancel", onTouchEnd);
       }
       fitReference.current = null;
       inputReference.current?.remove();
@@ -251,11 +404,12 @@ export default function Session({ websocketURL }: SessionProps) {
       websocketReference.current?.close();
       term.dispose();
     };
-  }, [websocketURL, handleTouchStart, handleTouchMove, handleTouchEnd]);
+  }, [websocketURL]);
 
   useEffect(() => {
     const fit = fitReference.current;
     if (!fit) return;
+    termReference.current?.clearSelection();
     fit.fit();
     const websocket = websocketReference.current;
     if (websocket?.readyState !== WebSocket.OPEN) return;
@@ -339,6 +493,22 @@ export default function Session({ websocketURL }: SessionProps) {
         </div>
 
         <div {...{ style: STYLE.GROUP }}>
+          {selectedText && (
+            <button
+              {...{
+                children: "copy",
+                onMouseDown: (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  handleCopy();
+                },
+                onTouchEnd: (e: React.TouchEvent) => {
+                  e.preventDefault();
+                  handleCopy();
+                },
+                style: STYLE.BUTTON,
+              }}
+            />
+          )}
           {[
             {
               children: "←",
