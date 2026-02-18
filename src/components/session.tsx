@@ -57,6 +57,7 @@ export default function Session({ websocketURL }: SessionProps) {
   const sendData: WebSocket["send"] = (data) => {
     const websocket = websocketReference.current;
     if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    console.log("sendData:", data);
     websocket.send(data);
     setState((state) => ({
       ...state,
@@ -96,17 +97,14 @@ export default function Session({ websocketURL }: SessionProps) {
     });
     term.open(terminalReference.current);
     term.focus = () => inputReference.current?.focus();
-    const xtermInput =
-      terminalReference.current.querySelector<HTMLTextAreaElement>(
-        ".xterm-helper-textarea",
-      );
-    if (xtermInput) {
-      xtermInput.addEventListener("focus", () =>
-        inputReference.current?.focus(),
-      );
-      xtermInput.setAttribute("readonly", "true");
-      xtermInput.style.pointerEvents = "none";
-      xtermInput.tabIndex = -1;
+    const xterm = terminalReference.current.querySelector<HTMLTextAreaElement>(
+      ".xterm-helper-textarea",
+    );
+    if (xterm) {
+      xterm.addEventListener("focus", () => inputReference.current?.focus());
+      xterm.setAttribute("readonly", "true");
+      xterm.style.pointerEvents = "none";
+      xterm.tabIndex = -1;
     }
     websocketReference.current = new WebSocket(
       websocketURL ?? `ws://${window.location.host}`,
@@ -125,20 +123,12 @@ export default function Session({ websocketURL }: SessionProps) {
       );
     };
     inputReference.current = document.createElement("textarea");
-    inputReference.current.addEventListener(
-      "beforeinput",
-      (e: InputEvent) =>
-        websocketReference.current!.readyState === WebSocket.OPEN &&
-        sendData(
-          e.inputType === "insertText"
-            ? (e.data ?? "")
-            : e.inputType === "deleteContentBackward"
-              ? "\x7f"
-              : e.inputType === "insertLineBreak"
-                ? "\r"
-                : "",
-        ),
-    );
+    inputReference.current.addEventListener("beforeinput", (e: InputEvent) => {
+      if (websocketReference.current!.readyState !== WebSocket.OPEN) return;
+      if (e.inputType === "insertText" && e.data) sendData(e.data);
+      if (e.inputType === "deleteContentBackward") sendData("\x7f");
+      if (e.inputType === "insertLineBreak") sendData("\r");
+    });
     inputReference.current.addEventListener("compositionend", () => {
       inputReference.current!.value = "";
     });
@@ -169,7 +159,10 @@ export default function Session({ websocketURL }: SessionProps) {
               dataToSend = "\x1b" + e.code.slice(5);
           }
           if (!dataToSend) dataToSend = SPECIAL_KEYS[e.key];
-          if (dataToSend) sendData(dataToSend);
+          if (dataToSend) {
+            e.preventDefault();
+            sendData(dataToSend);
+          }
           return state;
         });
     });
