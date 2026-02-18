@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "chmod +x node_modules/node-pty/prebuilds/darwin-*/spawn-helper 2>/dev/null || true",
     "dev": "vite --port 3000",
-    "server": "nodemon server.js",
+    "server": "tsx server.ts",
     "build": "vite build"
   },
   "dependencies": {
@@ -18,10 +18,12 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@types/node": "^25.2.3",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^4.3.4",
-    "nodemon": "^3.1.11",
+    "tsx": "^4.21.0",
     "typescript": "^5.7.2",
     "vite": "^6.0.5"
   }
