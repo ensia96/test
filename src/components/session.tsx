@@ -57,7 +57,6 @@ export default function Session({ websocketURL }: SessionProps) {
   const sendData: WebSocket["send"] = (data) => {
     const websocket = websocketReference.current;
     if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
-    console.log("sendData:", data);
     websocket.send(data);
     setState((state) => ({
       ...state,
