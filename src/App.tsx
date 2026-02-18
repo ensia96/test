@@ -1,9 +1,5 @@
-import Terminal from './components/Terminal'
+import Session from "./components/session";
 
 export default function App() {
-  return (
-    <div style={{ height: '100%' }}>
-      <Terminal />
-    </div>
-  )
+  return <Session />;
 }
