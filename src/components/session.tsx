@@ -1,3 +1,4 @@
+import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
@@ -201,6 +202,19 @@ export default function Session({ websocketURL }: SessionProps) {
     const fit = new FitAddon();
     fitReference.current = fit;
     term.loadAddon(fit);
+    term.loadAddon(
+      new ClipboardAddon(
+        undefined,
+        {
+          async readText() {
+            return navigator.clipboard.readText();
+          },
+          async writeText(_selection: string, text: string) {
+            setSelectedText(text);
+          },
+        }
+      ),
+    );
     fit.fit();
     const handleResize = () => {
       if (!terminalReference.current) return;
@@ -232,6 +246,7 @@ export default function Session({ websocketURL }: SessionProps) {
     if (overlay) {
       const TAP_THRESHOLD = 15;
       const TAP_TIMEOUT = 300;
+      const LONGPRESS_THRESHOLD = 10;
       const PX_PER_LINE = 20;
       const VELOCITY_THRESHOLD = 0.5;
       const FRICTION = 0.95;
@@ -239,7 +254,7 @@ export default function Session({ websocketURL }: SessionProps) {
       let startX = 0;
       let startY = 0;
       let startTime = 0;
-      let touchMode: "none" | "tap" | "drag" | "scroll" = "none";
+      let touchMode: "none" | "tap" | "longpress" | "drag" | "scroll" = "none";
       let dragStartCol = 0;
       let dragStartRow = 0;
       let scrollAccumulated = 0;
@@ -247,6 +262,7 @@ export default function Session({ websocketURL }: SessionProps) {
       let lastY = 0;
       let lastTime = 0;
       let momentumId = 0;
+      let longpressTimer = 0;
 
       const getCell = (x: number, y: number) => {
         const rect = terminalReference.current!.getBoundingClientRect();
@@ -313,6 +329,13 @@ export default function Session({ websocketURL }: SessionProps) {
           const { col, row } = getCell(startX, startY);
           dragStartCol = col;
           dragStartRow = row;
+          clearTimeout(longpressTimer);
+          longpressTimer = window.setTimeout(() => {
+            if (touchMode === "tap") {
+              touchMode = "longpress";
+              navigator.vibrate?.(50);
+            }
+          }, TAP_TIMEOUT);
         } else if (e.touches.length === 2) {
           cancelAnimationFrame(momentumId);
           touchMode = "scroll";
@@ -328,11 +351,22 @@ export default function Session({ websocketURL }: SessionProps) {
       onTouchMove = (e: TouchEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (touchMode === "tap" && e.touches.length === 1) {
+        if ((touchMode === "tap" || touchMode === "longpress") && e.touches.length === 1) {
           const dx = e.touches[0].clientX - startX;
           const dy = e.touches[0].clientY - startY;
-          if (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD) {
-            touchMode = "drag";
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist > LONGPRESS_THRESHOLD) {
+            clearTimeout(longpressTimer);
+            if (touchMode === "tap" && (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD)) {
+              cancelAnimationFrame(momentumId);
+              touchMode = "scroll";
+              lastY = e.touches[0].clientY;
+              lastTime = Date.now();
+              scrollAccumulated = 0;
+              velocityY = 0;
+            } else if (touchMode === "longpress") {
+              touchMode = "drag";
+            }
           }
         }
         if (touchMode === "drag" && e.touches.length === 1) {
@@ -344,8 +378,10 @@ export default function Session({ websocketURL }: SessionProps) {
           } else {
             term.select(col, row, startOffset - currentOffset + 1);
           }
-        } else if (touchMode === "scroll" && e.touches.length === 2) {
-          const currentY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        } else if (touchMode === "scroll") {
+          const currentY = e.touches.length === 2
+            ? (e.touches[0].clientY + e.touches[1].clientY) / 2
+            : e.touches[0].clientY;
           const now = Date.now();
           const dt = now - lastTime;
           if (dt > 0) velocityY = ((lastY - currentY) / dt) * 16;
@@ -367,10 +403,12 @@ export default function Session({ websocketURL }: SessionProps) {
       onTouchEnd = (e: TouchEvent) => {
         e.preventDefault();
         e.stopPropagation();
+        clearTimeout(longpressTimer);
         if (touchMode === "tap" && Date.now() - startTime < TAP_TIMEOUT) {
           const { col, row } = getCell(startX, startY);
           sendData(`\x1b[<0;${col + 1};${row + 1}M`);
           sendData(`\x1b[<0;${col + 1};${row + 1}m`);
+        } else if (touchMode === "longpress") {
           inputReference.current?.focus();
         } else if (touchMode === "drag") {
           const text = term.getSelection();
