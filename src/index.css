@@ -1,25 +1,31 @@
 @font-face {
-  font-family: 'MesloLGS NF';
-  src: url('/fonts/MesloLGS NF Regular.ttf') format('truetype');
-  font-weight: normal;
+  font-family: "MesloLGS NF";
   font-style: normal;
+  font-weight: normal;
+  src: url("/fonts/MesloLGS NF Regular.ttf") format("truetype");
 }
 
 * {
+  box-sizing: border-box;
   margin: 0;
   padding: 0;
-  box-sizing: border-box;
 }
 
-html, body, #root {
+html,
+body,
+#root {
+  background: #282828;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-  background: #282828;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 
 body {
   display: flex;
   flex-direction: column;
   padding-top: env(safe-area-inset-top, 0px);
+  position: fixed;
+  width: 100%;
 }

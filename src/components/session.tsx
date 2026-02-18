@@ -1,11 +1,13 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export default function Session({ websocketURL }: SessionProps) {
+  const fitReference = useRef<FitAddon | null>(null);
   const inputReference = useRef<HTMLTextAreaElement | null>(null);
   const terminalReference = useRef<HTMLDivElement>(null);
+  const touchOverlayReference = useRef<HTMLDivElement>(null);
   const websocketReference = useRef<WebSocket | null>(null);
 
   const [state, setState] = useState<SessionState>({
@@ -13,6 +15,55 @@ export default function Session({ websocketURL }: SessionProps) {
     keyboard: 0,
     opt: 0,
   });
+
+  const handleModifier =
+    (key: string) => (e: React.MouseEvent | React.TouchEvent) => {
+      e.preventDefault();
+      if (key === "ctrl" || key === "opt")
+        setState((state) => ({
+          ...state,
+          [key]: 2 * +(state[key] === 1) + +(state[key] === 0),
+        }));
+      else {
+        let dataToSend;
+        if (state.ctrl !== 0 && key.length === 1)
+          dataToSend = String.fromCharCode(
+            key.toLowerCase().charCodeAt(0) & 0x1f,
+          );
+        if (state.opt !== 0) {
+          if (key === "ArrowLeft") dataToSend = "\x1bb";
+          if (key === "ArrowRight") dataToSend = "\x1bf";
+          if (key.length === 1) dataToSend = "\x1b" + key.toLowerCase();
+        }
+        if (!dataToSend) dataToSend = SPECIAL_KEYS[key];
+        if (dataToSend) sendData(dataToSend);
+      }
+      inputReference.current?.focus();
+    };
+
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 1) e.preventDefault();
+  }, []);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (e.touches.length === 1) e.preventDefault();
+  }, []);
+
+  const handleTouchEnd = useCallback((e: TouchEvent) => {
+    e.preventDefault();
+    inputReference.current?.focus();
+  }, []);
+
+  const sendData: WebSocket["send"] = (data) => {
+    const websocket = websocketReference.current;
+    if (!websocket || websocket.readyState !== WebSocket.OPEN) return;
+    websocket.send(data);
+    setState((state) => ({
+      ...state,
+      ctrl: state.ctrl === 1 ? 0 : state.ctrl,
+      opt: state.opt === 1 ? 0 : state.opt,
+    }));
+  };
 
   useEffect(() => {
     if (!terminalReference.current) return;
@@ -51,14 +102,14 @@ export default function Session({ websocketURL }: SessionProps) {
       );
     if (xtermInput) {
       xtermInput.addEventListener("focus", () =>
-        inputReference.current!.focus(),
+        inputReference.current?.focus(),
       );
       xtermInput.setAttribute("readonly", "true");
       xtermInput.style.pointerEvents = "none";
       xtermInput.tabIndex = -1;
     }
     websocketReference.current = new WebSocket(
-      websocketURL || `ws://${window.location.host}`,
+      websocketURL ?? `ws://${window.location.host}`,
     );
     websocketReference.current.onclose = () =>
       term.write("\r\n\x1b[33m[Disconnected]\x1b[0m\r\n");
@@ -135,8 +186,28 @@ export default function Session({ websocketURL }: SessionProps) {
     `;
     terminalReference.current.appendChild(inputReference.current);
     inputReference.current.focus();
-    // TODO: not to use addon, adjust with css only
+    touchOverlayReference.current?.addEventListener(
+      "touchstart",
+      handleTouchStart,
+      { passive: false },
+    );
+    touchOverlayReference.current?.addEventListener(
+      "touchmove",
+      handleTouchMove,
+      { passive: false },
+    );
+    touchOverlayReference.current?.addEventListener(
+      "touchend",
+      handleTouchEnd,
+      { passive: false },
+    );
+    touchOverlayReference.current?.addEventListener(
+      "touchcancel",
+      handleTouchEnd,
+      { passive: false },
+    );
     const fit = new FitAddon();
+    fitReference.current = fit;
     term.loadAddon(fit);
     fit.fit();
     const handleResize = () => {
@@ -150,10 +221,12 @@ export default function Session({ websocketURL }: SessionProps) {
             0,
           ),
         }));
-      fit.fit();
-      websocketReference.current!.send(
-        JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
-      );
+      else {
+        fit.fit();
+        websocketReference.current!.send(
+          JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
+        );
+      }
     };
     window.addEventListener("resize", handleResize);
     window.visualViewport?.addEventListener("resize", handleResize);
@@ -162,48 +235,42 @@ export default function Session({ websocketURL }: SessionProps) {
       window.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("scroll", handleResize);
+      if (touchOverlayReference.current) {
+        touchOverlayReference.current.removeEventListener(
+          "touchstart",
+          handleTouchStart,
+        );
+        touchOverlayReference.current.removeEventListener(
+          "touchmove",
+          handleTouchMove,
+        );
+        touchOverlayReference.current.removeEventListener(
+          "touchend",
+          handleTouchEnd,
+        );
+        touchOverlayReference.current.removeEventListener(
+          "touchcancel",
+          handleTouchEnd,
+        );
+      }
+      fitReference.current = null;
       inputReference.current?.remove();
       inputReference.current = null;
-      websocketReference.current!.close();
+      websocketReference.current?.close();
       term.dispose();
     };
-  }, [websocketURL]);
+  }, [websocketURL, handleTouchStart, handleTouchMove, handleTouchEnd]);
 
-  const handleModifier =
-    (key: string) => (e: React.MouseEvent | React.TouchEvent) => {
-      e.preventDefault();
-      if (key === "ctrl" || key === "opt")
-        setState((state) => ({
-          ...state,
-          [key]: 2 * +(state[key] === 1) + +(state[key] === 0),
-        }));
-      else {
-        let dataToSend;
-        if (state.ctrl !== 0 && key.length === 1)
-          dataToSend = String.fromCharCode(
-            key.toLowerCase().charCodeAt(0) & 0x1f,
-          );
-        if (state.opt !== 0) {
-          if (key === "ArrowLeft") dataToSend = "\x1bb";
-          if (key === "ArrowRight") dataToSend = "\x1bf";
-          if (key.length === 1) dataToSend = "\x1b" + key.toLowerCase();
-        }
-        if (!dataToSend) dataToSend = SPECIAL_KEYS[key];
-        if (dataToSend) sendData(dataToSend);
-      }
-      inputReference.current?.focus();
-    };
-
-  const sendData: WebSocket["send"] = (data) => {
-    const ws = websocketReference.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
-    ws.send(data);
-    setState((state) => ({
-      ...state,
-      ctrl: state.ctrl === 1 ? 0 : state.ctrl,
-      opt: state.opt === 1 ? 0 : state.opt,
-    }));
-  };
+  useEffect(() => {
+    const fit = fitReference.current;
+    if (!fit) return;
+    fit.fit();
+    const websocket = websocketReference.current;
+    if (websocket?.readyState !== WebSocket.OPEN) return;
+    const dimensions = fit.proposeDimensions();
+    if (!dimensions) return;
+    websocket.send(JSON.stringify({ type: "resize", ...dimensions }));
+  }, [state.keyboard]);
 
   return (
     <div
@@ -225,7 +292,23 @@ export default function Session({ websocketURL }: SessionProps) {
             position: "relative",
           },
         }}
-      />
+      >
+        <div
+          {...{
+            ref: touchOverlayReference,
+            style: {
+              background: "transparent",
+              bottom: 0,
+              left: 0,
+              position: "absolute",
+              right: 0,
+              top: 0,
+              touchAction: "none",
+              zIndex: 20,
+            },
+          }}
+        />
+      </div>
 
       <div {...{ style: STYLE.KEYBAR }}>
         <div {...{ style: STYLE.GROUP }}>
