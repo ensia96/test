@@ -171,18 +171,28 @@ export default function Session({ websocketURL }: SessionProps) {
               e.key.toLowerCase().charCodeAt(0) & 0x1f,
             );
           }
-          if (isOpt && !isCtrl) {
+          if (isOpt) {
             e.preventDefault();
             if (e.key === "ArrowLeft") dataToSend = "\x1bb";
             if (e.key === "ArrowRight") dataToSend = "\x1bf";
             if (e.key === "Backspace") dataToSend = "\x1b\x7f";
             if (e.key === "Delete") dataToSend = "\x1bd";
-            if (e.code.startsWith("Key"))
-              dataToSend =
-                "\x1b" +
+            if (e.code.startsWith("Key")) {
+              const ch =
                 e.code.slice(3)[e.shiftKey ? "toUpperCase" : "toLowerCase"]();
+              dataToSend = isCtrl
+                ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
+                : "\x1b" + ch;
+            }
             if (e.code.startsWith("Digit"))
               dataToSend = "\x1b" + e.code.slice(5);
+            const sym = OPT_CODE_MAP[e.code];
+            if (sym) {
+              const ch = sym[+e.shiftKey];
+              dataToSend = isCtrl
+                ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
+                : "\x1b" + ch;
+            }
           }
           if (!dataToSend) dataToSend = SPECIAL_KEYS[e.key];
           if (dataToSend) {
@@ -626,6 +636,20 @@ type SessionState = {
   ctrl: ModifierState;
   keyboard: number;
   opt: ModifierState;
+};
+
+const OPT_CODE_MAP: Record<string, [string, string]> = {
+  Backquote: ["`", "~"],
+  Backslash: ["\\", "|"],
+  BracketLeft: ["[", "{"],
+  BracketRight: ["]", "}"],
+  Comma: [",", "<"],
+  Equal: ["=", "+"],
+  Minus: ["-", "_"],
+  Period: [".", ">"],
+  Quote: ["'", '"'],
+  Semicolon: [";", ":"],
+  Slash: ["/", "?"],
 };
 
 const SPECIAL_KEYS: Record<string, string> = {
