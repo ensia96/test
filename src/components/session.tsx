@@ -1,5 +1,6 @@
 import { ClipboardAddon } from "@xterm/addon-clipboard";
 import { FitAddon } from "@xterm/addon-fit";
+import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
@@ -81,6 +82,7 @@ export default function Session({ websocketURL }: SessionProps) {
 
     // === Terminal 초기화 ===
     const term = new Terminal({
+      allowProposedApi: true,
       fontFamily: '"MesloLGS NF", Menlo, Monaco, "Courier New", monospace',
       fontSize: 14,
       cursorBlink: true,
@@ -181,6 +183,7 @@ export default function Session({ websocketURL }: SessionProps) {
         }
         if (isOpt) {
           e.preventDefault();
+          if (e.key === "Enter") dataToSend = "\x1b\r";
           if (e.key === "ArrowLeft") dataToSend = "\x1bb";
           if (e.key === "ArrowRight") dataToSend = "\x1bf";
           if (e.key === "Backspace") dataToSend = "\x1b\x7f";
@@ -228,6 +231,9 @@ export default function Session({ websocketURL }: SessionProps) {
     const fit = new FitAddon();
     fitReference.current = fit;
     term.loadAddon(fit);
+    const unicode11 = new Unicode11Addon();
+    term.loadAddon(unicode11);
+    term.unicode.activeVersion = "11";
     term.loadAddon(
       new ClipboardAddon(undefined, {
         async readText() {
