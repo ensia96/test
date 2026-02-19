@@ -675,8 +675,8 @@ type SessionState = {
 };
 
 const CMD_TMUX_MAP = {
-  e: "\x02w",
-  j: "\x02c",
+  j: "\x02w",
+  k: "\x02c",
 };
 
 const OPT_CODE_MAP: Record<string, [string, string]> = {
