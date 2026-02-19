@@ -48,8 +48,8 @@ websocketServer.on("connection", (client) => {
   const websocket = client as ExtendedWebSocket;
   websocket.id = ++connectionId;
   websocket.isAlive = true;
-  const shell = process.env.SHELL ?? "/bin/zsh";
-  const ptyProcess = pty.spawn(shell, [], {
+  const SESSION_NAME = "webtty-main";
+  const ptyProcess = pty.spawn("tmux", ["new-session", "-A", "-s", SESSION_NAME], {
     name: "xterm-256color",
     cols: 80,
     rows: 24,
@@ -71,8 +71,12 @@ websocketServer.on("connection", (client) => {
     if (websocket.readyState === websocket.OPEN)
       websocket.close(1000, "PTY exited");
   });
-  websocket.on("close", () => ptyProcess.kill());
-  websocket.on("error", () => ptyProcess.kill());
+  websocket.on("close", () => {
+    // tmux 세션 유지를 위해 kill하지 않음
+  });
+  websocket.on("error", () => {
+    // 에러 로깅만, tmux 세션은 유지
+  });
   websocket.on("message", (msg) => {
     const raw = msg.toString();
     try {

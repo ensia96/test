@@ -124,8 +124,15 @@ export default function Session({ websocketURL }: SessionProps) {
     websocketReference.current = new WebSocket(
       websocketURL ?? `ws://${window.location.host}`,
     );
-    websocketReference.current.onclose = () =>
+    websocketReference.current.onclose = (e) => {
       term.write("\r\n\x1b[33m[Disconnected]\x1b[0m\r\n");
+      // 의도적 종료(1000)가 아니면 2초 후 재연결
+      if (e.code !== 1000) {
+        setTimeout(() => {
+          window.location.reload();
+        }, 2000);
+      }
+    };
     websocketReference.current.onopen = () => {
       term.write("\x1b[32m[Connected]\x1b[0m\r\n");
       websocketReference.current!.onmessage = (e) => {
@@ -203,17 +210,14 @@ export default function Session({ websocketURL }: SessionProps) {
     fitReference.current = fit;
     term.loadAddon(fit);
     term.loadAddon(
-      new ClipboardAddon(
-        undefined,
-        {
-          async readText() {
-            return navigator.clipboard.readText();
-          },
-          async writeText(_selection: string, text: string) {
-            setSelectedText(text);
-          },
-        }
-      ),
+      new ClipboardAddon(undefined, {
+        async readText() {
+          return navigator.clipboard.readText();
+        },
+        async writeText(_selection: string, text: string) {
+          setSelectedText(text);
+        },
+      }),
     );
     fit.fit();
     const handleResize = () => {
@@ -351,13 +355,19 @@ export default function Session({ websocketURL }: SessionProps) {
       onTouchMove = (e: TouchEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if ((touchMode === "tap" || touchMode === "longpress") && e.touches.length === 1) {
+        if (
+          (touchMode === "tap" || touchMode === "longpress") &&
+          e.touches.length === 1
+        ) {
           const dx = e.touches[0].clientX - startX;
           const dy = e.touches[0].clientY - startY;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist > LONGPRESS_THRESHOLD) {
             clearTimeout(longpressTimer);
-            if (touchMode === "tap" && (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD)) {
+            if (
+              touchMode === "tap" &&
+              (Math.abs(dx) > TAP_THRESHOLD || Math.abs(dy) > TAP_THRESHOLD)
+            ) {
               cancelAnimationFrame(momentumId);
               touchMode = "scroll";
               lastY = e.touches[0].clientY;
@@ -370,18 +380,26 @@ export default function Session({ websocketURL }: SessionProps) {
           }
         }
         if (touchMode === "drag" && e.touches.length === 1) {
-          const { col, row } = getCell(e.touches[0].clientX, e.touches[0].clientY);
+          const { col, row } = getCell(
+            e.touches[0].clientX,
+            e.touches[0].clientY,
+          );
           const startOffset = dragStartRow * term.cols + dragStartCol;
           const currentOffset = row * term.cols + col;
           if (currentOffset >= startOffset) {
-            term.select(dragStartCol, dragStartRow, currentOffset - startOffset + 1);
+            term.select(
+              dragStartCol,
+              dragStartRow,
+              currentOffset - startOffset + 1,
+            );
           } else {
             term.select(col, row, startOffset - currentOffset + 1);
           }
         } else if (touchMode === "scroll") {
-          const currentY = e.touches.length === 2
-            ? (e.touches[0].clientY + e.touches[1].clientY) / 2
-            : e.touches[0].clientY;
+          const currentY =
+            e.touches.length === 2
+              ? (e.touches[0].clientY + e.touches[1].clientY) / 2
+              : e.touches[0].clientY;
           const now = Date.now();
           const dt = now - lastTime;
           if (dt > 0) velocityY = ((lastY - currentY) / dt) * 16;
@@ -425,8 +443,20 @@ export default function Session({ websocketURL }: SessionProps) {
       overlay.addEventListener("touchcancel", onTouchEnd, { passive: false });
     }
 
+    // === Visibility Change 핸들러 ===
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        const ws = websocketReference.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          window.location.reload();
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     // === Cleanup ===
     return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       window.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("scroll", handleResize);
