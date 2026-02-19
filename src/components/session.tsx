@@ -150,7 +150,8 @@ export default function Session({ websocketURL }: SessionProps) {
     inputReference.current.addEventListener("beforeinput", (e: InputEvent) => {
       if (websocketReference.current!.readyState !== WebSocket.OPEN) return;
       if (e.inputType === "insertText" && e.data) sendData(e.data);
-      if (e.inputType === "insertFromPaste" && e.data) sendData(e.data);
+      if (e.inputType === "insertFromPaste" && e.data)
+        sendData(`\x1b[200~${e.data}\x1b[201~`);
       if (e.inputType === "deleteContentBackward") sendData("\x7f");
       if (e.inputType === "insertLineBreak") sendData("\r");
     });
