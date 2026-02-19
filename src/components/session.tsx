@@ -160,47 +160,55 @@ export default function Session({ websocketURL }: SessionProps) {
     });
     inputReference.current.addEventListener("keydown", (e: KeyboardEvent) => {
       if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return;
-      if (!e.metaKey)
-        setState((state) => {
-          const isCtrl = e.ctrlKey || state.ctrl !== 0;
-          const isOpt = e.altKey || state.opt !== 0;
-          let dataToSend;
-          if (isCtrl && !isOpt && e.key.length === 1) {
+      setState((state) => {
+        if (e.metaKey) {
+          const mapped =
+            CMD_TMUX_MAP[e.key.toLowerCase() as keyof typeof CMD_TMUX_MAP];
+          if (mapped) {
             e.preventDefault();
-            dataToSend = String.fromCharCode(
-              e.key.toLowerCase().charCodeAt(0) & 0x1f,
-            );
-          }
-          if (isOpt) {
-            e.preventDefault();
-            if (e.key === "ArrowLeft") dataToSend = "\x1bb";
-            if (e.key === "ArrowRight") dataToSend = "\x1bf";
-            if (e.key === "Backspace") dataToSend = "\x1b\x7f";
-            if (e.key === "Delete") dataToSend = "\x1bd";
-            if (e.code.startsWith("Key")) {
-              const ch =
-                e.code.slice(3)[e.shiftKey ? "toUpperCase" : "toLowerCase"]();
-              dataToSend = isCtrl
-                ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
-                : "\x1b" + ch;
-            }
-            if (e.code.startsWith("Digit"))
-              dataToSend = "\x1b" + e.code.slice(5);
-            const sym = OPT_CODE_MAP[e.code];
-            if (sym) {
-              const ch = sym[+e.shiftKey];
-              dataToSend = isCtrl
-                ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
-                : "\x1b" + ch;
-            }
-          }
-          if (!dataToSend) dataToSend = SPECIAL_KEYS[e.key];
-          if (dataToSend) {
-            e.preventDefault();
-            sendData(dataToSend);
+            sendData(mapped);
           }
           return state;
-        });
+        }
+        const isCtrl = e.ctrlKey || state.ctrl !== 0;
+        const isOpt = e.altKey || state.opt !== 0;
+        let dataToSend;
+        if (isCtrl && !isOpt && e.key.length === 1) {
+          e.preventDefault();
+          dataToSend = String.fromCharCode(
+            e.key.toLowerCase().charCodeAt(0) & 0x1f,
+          );
+        }
+        if (isOpt) {
+          e.preventDefault();
+          if (e.key === "ArrowLeft") dataToSend = "\x1bb";
+          if (e.key === "ArrowRight") dataToSend = "\x1bf";
+          if (e.key === "Backspace") dataToSend = "\x1b\x7f";
+          if (e.key === "Delete") dataToSend = "\x1bd";
+          if (e.code.startsWith("Key")) {
+            const ch =
+              e.code.slice(3)[e.shiftKey ? "toUpperCase" : "toLowerCase"]();
+            dataToSend = isCtrl
+              ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
+              : "\x1b" + ch;
+          }
+          if (e.code.startsWith("Digit"))
+            dataToSend = "\x1b" + e.code.slice(5);
+          const sym = OPT_CODE_MAP[e.code];
+          if (sym) {
+            const ch = sym[+e.shiftKey];
+            dataToSend = isCtrl
+              ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
+              : "\x1b" + ch;
+          }
+        }
+        if (!dataToSend) dataToSend = SPECIAL_KEYS[e.key];
+        if (dataToSend) {
+          e.preventDefault();
+          sendData(dataToSend);
+        }
+        return state;
+      });
     });
     inputReference.current.style.cssText = `
       position: absolute;
@@ -569,6 +577,28 @@ export default function Session({ websocketURL }: SessionProps) {
               }}
             />
           ))}
+          {[
+            { children: "list", data: "\x02w" },
+            { children: "new", data: "\x02c" },
+          ].map(({ children, data }) => (
+            <button
+              {...{
+                children,
+                key: children,
+                onMouseDown: (e: React.MouseEvent) => {
+                  e.preventDefault();
+                  sendData(data);
+                  inputReference.current?.focus();
+                },
+                onTouchEnd: (e: React.TouchEvent) => {
+                  e.preventDefault();
+                  sendData(data);
+                  inputReference.current?.focus();
+                },
+                style: STYLE.ACTION,
+              }}
+            />
+          ))}
         </div>
 
         <div {...{ style: STYLE.GROUP }}>
@@ -638,6 +668,11 @@ type SessionState = {
   opt: ModifierState;
 };
 
+const CMD_TMUX_MAP = {
+  e: "\x02w",
+  j: "\x02c",
+};
+
 const OPT_CODE_MAP: Record<string, [string, string]> = {
   Backquote: ["`", "~"],
   Backslash: ["\\", "|"],
@@ -667,6 +702,24 @@ const SPECIAL_KEYS: Record<string, string> = {
 };
 
 const STYLE: Record<string, React.CSSProperties> = {
+  ACTION: {
+    WebkitTapHighlightColor: "transparent",
+    alignItems: "center",
+    backgroundColor: "#32302f",
+    border: "1px solid #458588",
+    borderRadius: 6,
+    color: "#83a598",
+    cursor: "pointer",
+    display: "flex",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 13,
+    fontWeight: 500,
+    height: 36,
+    justifyContent: "center",
+    touchAction: "manipulation",
+    userSelect: "none",
+    width: 44,
+  },
   BUTTON: {
     WebkitTapHighlightColor: "transparent",
     alignItems: "center",
