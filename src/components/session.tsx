@@ -605,6 +605,20 @@ export default function Session({ websocketURL }: SessionProps) {
               }}
             />
           ))}
+          <button
+            {...{
+              children: "reload",
+              onMouseDown: (e: React.MouseEvent) => {
+                e.preventDefault();
+                window.location.reload();
+              },
+              onTouchEnd: (e: React.TouchEvent) => {
+                e.preventDefault();
+                window.location.reload();
+              },
+              style: STYLE.ACTION,
+            }}
+          />
         </div>
 
         <div {...{ style: STYLE.GROUP }}>
