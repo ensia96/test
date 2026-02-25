@@ -19,6 +19,9 @@ export default function Session({ websocketURL }: SessionProps) {
     opt: 0,
   });
   const [selectedText, setSelectedText] = useState<string | null>(null);
+  const [barMode, setBarMode] = useState(true);
+  const [floatPos, setFloatPos] = useState({ x: 20, y: 200 });
+  const dragRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
 
   const handleModifier =
     (key: string) => (e: React.MouseEvent | React.TouchEvent) => {
@@ -549,128 +552,319 @@ export default function Session({ websocketURL }: SessionProps) {
         />
       </div>
 
-      <div {...{ style: STYLE.KEYBAR }}>
-        <div {...{ style: STYLE.GROUP }}>
-          {[
-            {
-              children: "esc",
-              handler: handleModifier("Escape"),
-              style: STYLE.BUTTON,
-            },
-            {
-              children: "ctrl",
-              handler: handleModifier("ctrl"),
-              style: getModifierStyle(state.ctrl),
-            },
-            {
-              children: "opt",
-              handler: handleModifier("opt"),
-              style: getModifierStyle(state.opt),
-            },
-            {
-              children: "tab",
-              handler: handleModifier("Tab"),
-              style: STYLE.BUTTON,
-            },
-          ].map(({ children, handler, style }) => (
-            <button
-              {...{
-                children,
-                key: children,
-                onMouseDown: handler,
-                onTouchEnd: handler,
-                style,
-              }}
-            />
-          ))}
-          {[
-            { children: "list", data: "\x02w" },
-            { children: "new", data: "\x02c" },
-          ].map(({ children, data }) => (
-            <button
-              {...{
-                children,
-                key: children,
-                onMouseDown: (e: React.MouseEvent) => {
-                  e.preventDefault();
-                  sendData(data);
-                  inputReference.current?.focus();
+      <div
+        {...{
+          style: barMode ? STYLE.KEYBAR : floatingStyle(floatPos),
+        }}
+      >
+        {barMode ? (
+          <>
+            <div {...{ style: STYLE.GROUP }}>
+              <button
+                {...{
+                  children: "△",
+                  onMouseDown: (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    setBarMode(false);
+                  },
+                  onTouchEnd: (e: React.TouchEvent) => {
+                    e.preventDefault();
+                    setBarMode(false);
+                  },
+                  style: STYLE.TOGGLE,
+                }}
+              />
+              {[
+                {
+                  children: "esc",
+                  handler: handleModifier("Escape"),
+                  style: STYLE.BUTTON,
                 },
-                onTouchEnd: (e: React.TouchEvent) => {
-                  e.preventDefault();
-                  sendData(data);
-                  inputReference.current?.focus();
+                {
+                  children: "ctrl",
+                  handler: handleModifier("ctrl"),
+                  style: getModifierStyle(state.ctrl),
                 },
-                style: STYLE.ACTION,
-              }}
-            />
-          ))}
-          <button
-            {...{
-              children: "reload",
-              onMouseDown: (e: React.MouseEvent) => {
-                e.preventDefault();
-                window.location.reload();
-              },
-              onTouchEnd: (e: React.TouchEvent) => {
-                e.preventDefault();
-                window.location.reload();
-              },
-              style: STYLE.ACTION,
-            }}
-          />
-        </div>
+                {
+                  children: "opt",
+                  handler: handleModifier("opt"),
+                  style: getModifierStyle(state.opt),
+                },
+                {
+                  children: "tab",
+                  handler: handleModifier("Tab"),
+                  style: STYLE.BUTTON,
+                },
+              ].map(({ children, handler, style }) => (
+                <button
+                  {...{
+                    children,
+                    key: children,
+                    onMouseDown: handler,
+                    onTouchEnd: handler,
+                    style,
+                  }}
+                />
+              ))}
+              {[
+                { children: "list", data: "\x02w" },
+                { children: "new", data: "\x02c" },
+              ].map(({ children, data }) => (
+                <button
+                  {...{
+                    children,
+                    key: children,
+                    onMouseDown: (e: React.MouseEvent) => {
+                      e.preventDefault();
+                      sendData(data);
+                      inputReference.current?.focus();
+                    },
+                    onTouchEnd: (e: React.TouchEvent) => {
+                      e.preventDefault();
+                      sendData(data);
+                      inputReference.current?.focus();
+                    },
+                    style: STYLE.ACTION,
+                  }}
+                />
+              ))}
+              <button
+                {...{
+                  children: "reload",
+                  onMouseDown: (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    window.location.reload();
+                  },
+                  onTouchEnd: (e: React.TouchEvent) => {
+                    e.preventDefault();
+                    window.location.reload();
+                  },
+                  style: STYLE.ACTION,
+                }}
+              />
+            </div>
 
-        <div {...{ style: STYLE.GROUP }}>
-          {selectedText && (
-            <button
-              {...{
-                children: "copy",
-                onMouseDown: (e: React.MouseEvent) => {
-                  e.preventDefault();
-                  handleCopy();
+            <div {...{ style: STYLE.GROUP }}>
+              {selectedText && (
+                <button
+                  {...{
+                    children: "copy",
+                    onMouseDown: (e: React.MouseEvent) => {
+                      e.preventDefault();
+                      handleCopy();
+                    },
+                    onTouchEnd: (e: React.TouchEvent) => {
+                      e.preventDefault();
+                      handleCopy();
+                    },
+                    style: STYLE.BUTTON,
+                  }}
+                />
+              )}
+              {[
+                {
+                  children: "←",
+                  handler: handleModifier("ArrowLeft"),
+                  style: STYLE.BUTTON,
                 },
-                onTouchEnd: (e: React.TouchEvent) => {
-                  e.preventDefault();
-                  handleCopy();
+                {
+                  children: "↓",
+                  handler: handleModifier("ArrowDown"),
+                  style: STYLE.BUTTON,
                 },
-                style: STYLE.BUTTON,
-              }}
-            />
-          )}
-          {[
-            {
-              children: "←",
-              handler: handleModifier("ArrowLeft"),
-              style: STYLE.BUTTON,
-            },
-            {
-              children: "↓",
-              handler: handleModifier("ArrowDown"),
-              style: STYLE.BUTTON,
-            },
-            {
-              children: "↑",
-              handler: handleModifier("ArrowUp"),
-              style: STYLE.BUTTON,
-            },
-            {
-              children: "→",
-              handler: handleModifier("ArrowRight"),
-              style: STYLE.BUTTON,
-            },
-          ].map(({ children, handler, style }) => (
-            <button
-              {...{
-                children,
-                key: children,
-                onMouseDown: handler,
-                onTouchEnd: handler,
-                style,
-              }}
-            />
-          ))}
-        </div>
+                {
+                  children: "↑",
+                  handler: handleModifier("ArrowUp"),
+                  style: STYLE.BUTTON,
+                },
+                {
+                  children: "→",
+                  handler: handleModifier("ArrowRight"),
+                  style: STYLE.BUTTON,
+                },
+              ].map(({ children, handler, style }) => (
+                <button
+                  {...{
+                    children,
+                    key: children,
+                    onMouseDown: handler,
+                    onTouchEnd: handler,
+                    style,
+                  }}
+                />
+              ))}
+            </div>
+          </>
+        ) : (
+          <>
+            <div {...{ style: STYLE.FLOAT_ROW }}>
+              <div
+                {...{
+                  style: STYLE.DRAG_HANDLE,
+                  onTouchStart: (e: React.TouchEvent) => {
+                    dragRef.current = {
+                      dragging: true,
+                      offsetX: e.touches[0].clientX - floatPos.x,
+                      offsetY: e.touches[0].clientY - floatPos.y,
+                    };
+                  },
+                  onTouchMove: (e: React.TouchEvent) => {
+                    if (!dragRef.current.dragging) return;
+                    e.preventDefault();
+                    setFloatPos({
+                      x: e.touches[0].clientX - dragRef.current.offsetX,
+                      y: e.touches[0].clientY - dragRef.current.offsetY,
+                    });
+                  },
+                  onTouchEnd: () => {
+                    dragRef.current.dragging = false;
+                  },
+                }}
+              >
+                <div {...{ style: STYLE.DRAG_BAR }} />
+              </div>
+              <button
+                {...{
+                  children: "▽",
+                  onMouseDown: (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    setBarMode(true);
+                  },
+                  onTouchEnd: (e: React.TouchEvent) => {
+                    e.preventDefault();
+                    setBarMode(true);
+                  },
+                  style: STYLE.TOGGLE,
+                }}
+              />
+            </div>
+
+            <div {...{ style: STYLE.FLOAT_ROW }}>
+              {[
+                {
+                  children: "esc",
+                  handler: handleModifier("Escape"),
+                  style: STYLE.FLOAT_BUTTON,
+                },
+                {
+                  children: "tab",
+                  handler: handleModifier("Tab"),
+                  style: STYLE.FLOAT_BUTTON,
+                },
+                {
+                  children: "ctrl",
+                  handler: handleModifier("ctrl"),
+                  style: getModifierStyle(state.ctrl, true),
+                },
+                {
+                  children: "opt",
+                  handler: handleModifier("opt"),
+                  style: getModifierStyle(state.opt, true),
+                },
+              ].map(({ children, handler, style }) => (
+                <button
+                  {...{
+                    children,
+                    key: children,
+                    onMouseDown: handler,
+                    onTouchEnd: handler,
+                    style,
+                  }}
+                />
+              ))}
+            </div>
+
+            <div {...{ style: STYLE.FLOAT_ROW }}>
+              {[
+                { children: "list", data: "\x02w" },
+                { children: "new", data: "\x02c" },
+              ].map(({ children, data }) => (
+                <button
+                  {...{
+                    children,
+                    key: children,
+                    onMouseDown: (e: React.MouseEvent) => {
+                      e.preventDefault();
+                      sendData(data);
+                      inputReference.current?.focus();
+                    },
+                    onTouchEnd: (e: React.TouchEvent) => {
+                      e.preventDefault();
+                      sendData(data);
+                      inputReference.current?.focus();
+                    },
+                    style: STYLE.FLOAT_ACTION,
+                  }}
+                />
+              ))}
+              <button
+                {...{
+                  children: "reload",
+                  onMouseDown: (e: React.MouseEvent) => {
+                    e.preventDefault();
+                    window.location.reload();
+                  },
+                  onTouchEnd: (e: React.TouchEvent) => {
+                    e.preventDefault();
+                    window.location.reload();
+                  },
+                  style: STYLE.FLOAT_ACTION,
+                }}
+              />
+            </div>
+
+            <div {...{ style: STYLE.FLOAT_ROW }}>
+              {[
+                {
+                  children: "←",
+                  handler: handleModifier("ArrowLeft"),
+                  style: STYLE.FLOAT_BUTTON,
+                },
+                {
+                  children: "↓",
+                  handler: handleModifier("ArrowDown"),
+                  style: STYLE.FLOAT_BUTTON,
+                },
+                {
+                  children: "↑",
+                  handler: handleModifier("ArrowUp"),
+                  style: STYLE.FLOAT_BUTTON,
+                },
+                {
+                  children: "→",
+                  handler: handleModifier("ArrowRight"),
+                  style: STYLE.FLOAT_BUTTON,
+                },
+              ].map(({ children, handler, style }) => (
+                <button
+                  {...{
+                    children,
+                    key: children,
+                    onMouseDown: handler,
+                    onTouchEnd: handler,
+                    style,
+                  }}
+                />
+              ))}
+              {selectedText && (
+                <button
+                  {...{
+                    children: "copy",
+                    onMouseDown: (e: React.MouseEvent) => {
+                      e.preventDefault();
+                      handleCopy();
+                    },
+                    onTouchEnd: (e: React.TouchEvent) => {
+                      e.preventDefault();
+                      handleCopy();
+                    },
+                    style: STYLE.FLOAT_BUTTON,
+                  }}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -736,9 +930,9 @@ const STYLE: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     height: 36,
     justifyContent: "center",
+    minWidth: 44,
     touchAction: "manipulation",
     userSelect: "none",
-    width: 44,
   },
   BUTTON: {
     WebkitTapHighlightColor: "transparent",
@@ -754,9 +948,64 @@ const STYLE: Record<string, React.CSSProperties> = {
     fontWeight: 500,
     height: 36,
     justifyContent: "center",
+    minWidth: 44,
     touchAction: "manipulation",
     userSelect: "none",
-    width: 44,
+  },
+  DRAG_BAR: {
+    backgroundColor: "#665c54",
+    borderRadius: 2,
+    height: 4,
+    width: 40,
+  },
+  DRAG_HANDLE: {
+    alignItems: "center",
+    cursor: "grab",
+    display: "flex",
+    flex: 1,
+    height: 28,
+    justifyContent: "center",
+    touchAction: "none",
+  },
+  FLOAT_ACTION: {
+    WebkitTapHighlightColor: "transparent",
+    alignItems: "center",
+    backgroundColor: "#32302f",
+    border: "1px solid #458588",
+    borderRadius: 6,
+    color: "#83a598",
+    cursor: "pointer",
+    display: "flex",
+    flex: 1,
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 13,
+    fontWeight: 500,
+    height: 36,
+    justifyContent: "center",
+    touchAction: "manipulation",
+    userSelect: "none",
+  },
+  FLOAT_BUTTON: {
+    WebkitTapHighlightColor: "transparent",
+    alignItems: "center",
+    backgroundColor: "#3c3836",
+    border: "1px solid #504945",
+    borderRadius: 6,
+    color: "#ebdbb2",
+    cursor: "pointer",
+    display: "flex",
+    flex: 1,
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 14,
+    fontWeight: 500,
+    height: 36,
+    justifyContent: "center",
+    touchAction: "manipulation",
+    userSelect: "none",
+  },
+  FLOAT_ROW: {
+    display: "flex",
+    gap: 6,
   },
   GROUP: {
     display: "flex",
@@ -772,11 +1021,52 @@ const STYLE: Record<string, React.CSSProperties> = {
     height: 48,
     justifyContent: "space-between",
   },
+  TOGGLE: {
+    WebkitTapHighlightColor: "transparent",
+    alignItems: "center",
+    backgroundColor: "#282828",
+    border: "1px solid #d65d0e",
+    borderRadius: 6,
+    color: "#fe8019",
+    cursor: "pointer",
+    display: "flex",
+    fontFamily: "system-ui, sans-serif",
+    fontSize: 14,
+    fontWeight: 600,
+    height: 36,
+    justifyContent: "center",
+    touchAction: "manipulation",
+    userSelect: "none",
+    width: 32,
+  },
 };
 
-function getModifierStyle(state: ModifierState): React.CSSProperties {
+function floatingStyle(pos: {
+  x: number;
+  y: number;
+}): React.CSSProperties {
   return {
-    ...STYLE.BUTTON,
+    backgroundColor: "rgba(29, 32, 33, 0.95)",
+    borderRadius: 12,
+    boxShadow: "0 4px 16px rgba(0,0,0,0.5)",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    left: pos.x,
+    padding: "4px 8px 8px",
+    position: "fixed",
+    top: pos.y,
+    width: 228,
+    zIndex: 100,
+  };
+}
+
+function getModifierStyle(
+  state: ModifierState,
+  floating?: boolean,
+): React.CSSProperties {
+  return {
+    ...(floating ? STYLE.FLOAT_BUTTON : STYLE.BUTTON),
     backgroundColor: ["#3c3836", "#504945", "#665c54"][state],
     borderColor: ["#504945", "#fe8019"][+(state === 2)],
     borderWidth: 1 + +(state === 2),
