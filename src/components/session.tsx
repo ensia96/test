@@ -19,8 +19,21 @@ export default function Session({ websocketURL }: SessionProps) {
     opt: 0,
   });
   const [selectedText, setSelectedText] = useState<string | null>(null);
-  const [barMode, setBarMode] = useState(true);
-  const [floatPos, setFloatPos] = useState({ x: 20, y: 200 });
+  const [barMode, setBarMode] = useState(() => {
+    const saved = localStorage.getItem("terminal-bar-mode");
+    return saved === null ? true : saved === "true";
+  });
+  const [floatPos, setFloatPos] = useState(() => {
+    try {
+      const saved = localStorage.getItem("terminal-float-pos");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed.x === "number" && typeof parsed.y === "number")
+          return parsed as { x: number; y: number };
+      }
+    } catch {}
+    return { x: 20, y: 200 };
+  });
   const dragRef = useRef({ dragging: false, offsetX: 0, offsetY: 0 });
 
   const handleModifier =
@@ -514,6 +527,23 @@ export default function Session({ websocketURL }: SessionProps) {
     websocket.send(JSON.stringify({ type: "resize", ...dimensions }));
   }, [state.keyboard]);
 
+  useEffect(() => {
+    localStorage.setItem("terminal-bar-mode", String(barMode));
+    const timer = setTimeout(() => {
+      const fit = fitReference.current;
+      if (!fit) return;
+      fit.fit();
+      const websocket = websocketReference.current;
+      if (websocket?.readyState !== WebSocket.OPEN) return;
+      const term = termReference.current;
+      if (!term) return;
+      websocket.send(
+        JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
+      );
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [barMode]);
+
   return (
     <div
       {...{
@@ -718,6 +748,13 @@ export default function Session({ websocketURL }: SessionProps) {
                   },
                   onTouchEnd: () => {
                     dragRef.current.dragging = false;
+                    setFloatPos((pos) => {
+                      localStorage.setItem(
+                        "terminal-float-pos",
+                        JSON.stringify(pos),
+                      );
+                      return pos;
+                    });
                   },
                 }}
               >
