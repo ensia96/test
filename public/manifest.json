@@ -1,0 +1,16 @@
+{
+  "name": "Web Terminal",
+  "short_name": "Terminal",
+  "display": "standalone",
+  "start_url": "/",
+  "background_color": "#282828",
+  "theme_color": "#282828",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
