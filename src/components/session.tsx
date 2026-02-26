@@ -366,6 +366,7 @@ export default function Session({ websocketURL }: SessionProps) {
         e.stopPropagation();
         setSelectedText(null);
         if (e.touches.length === 1) {
+          cancelAnimationFrame(momentumId);
           startX = e.touches[0].clientX;
           startY = e.touches[0].clientY;
           startTime = Date.now();
@@ -467,6 +468,7 @@ export default function Session({ websocketURL }: SessionProps) {
           const { col, row } = getCell(startX, startY);
           sendData(`\x1b[<0;${col + 1};${row + 1}M`);
           sendData(`\x1b[<0;${col + 1};${row + 1}m`);
+          inputReference.current?.focus();
         } else if (touchMode === "longpress") {
           inputReference.current?.focus();
         } else if (touchMode === "drag") {
