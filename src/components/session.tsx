@@ -153,10 +153,30 @@ export default function Session({ websocketURL }: SessionProps) {
     };
     websocketReference.current.onopen = () => {
       term.write("\x1b[32m[Connected]\x1b[0m\r\n");
+      let writeBuffer = "";
+      let writeScheduled = false;
+      const scheduleWrite = () => {
+        if (writeScheduled) return;
+        writeScheduled = true;
+        requestAnimationFrame(() => {
+          if (writeBuffer) {
+            term.write(writeBuffer);
+            writeBuffer = "";
+          }
+          writeScheduled = false;
+        });
+      };
+
       websocketReference.current!.onmessage = (e) => {
-        if (typeof e.data === "string") term.write(e.data);
-        else if (e.data instanceof Blob)
-          e.data.text().then((text) => term.write(text));
+        if (typeof e.data === "string") {
+          writeBuffer += e.data;
+          scheduleWrite();
+        } else if (e.data instanceof Blob) {
+          e.data.text().then((text) => {
+            writeBuffer += text;
+            scheduleWrite();
+          });
+        }
       };
       websocketReference.current!.send(
         JSON.stringify({ type: "resize", cols: term.cols, rows: term.rows }),
