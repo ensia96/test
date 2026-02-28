@@ -311,6 +311,7 @@ export default function Session({ websocketURL }: SessionProps) {
     if (overlay) {
       const TAP_THRESHOLD = 15;
       const TAP_TIMEOUT = 300;
+      const LONGPRESS_TIMEOUT = 500;
       const LONGPRESS_THRESHOLD = 10;
       const PX_PER_LINE = 20;
       const VELOCITY_THRESHOLD = 0.5;
@@ -401,7 +402,7 @@ export default function Session({ websocketURL }: SessionProps) {
               touchMode = "longpress";
               navigator.vibrate?.(50);
             }
-          }, TAP_TIMEOUT);
+          }, LONGPRESS_TIMEOUT);
         } else if (e.touches.length === 2) {
           cancelAnimationFrame(momentumId);
           touchMode = "scroll";
@@ -488,7 +489,6 @@ export default function Session({ websocketURL }: SessionProps) {
           const { col, row } = getCell(startX, startY);
           sendData(`\x1b[<0;${col + 1};${row + 1}M`);
           sendData(`\x1b[<0;${col + 1};${row + 1}m`);
-          inputReference.current?.focus();
         } else if (touchMode === "longpress") {
           inputReference.current?.focus();
         } else if (touchMode === "drag") {
