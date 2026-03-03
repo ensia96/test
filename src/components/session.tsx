@@ -403,15 +403,6 @@ export default function Session({ websocketURL }: SessionProps) {
               navigator.vibrate?.(50);
             }
           }, LONGPRESS_TIMEOUT);
-        } else if (e.touches.length === 2) {
-          cancelAnimationFrame(momentumId);
-          touchMode = "scroll";
-          const avgY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-          startY = avgY;
-          lastY = avgY;
-          lastTime = Date.now();
-          scrollAccumulated = 0;
-          velocityY = 0;
         }
       };
 
@@ -459,10 +450,7 @@ export default function Session({ websocketURL }: SessionProps) {
             term.select(col, row, startOffset - currentOffset + 1);
           }
         } else if (touchMode === "scroll") {
-          const currentY =
-            e.touches.length === 2
-              ? (e.touches[0].clientY + e.touches[1].clientY) / 2
-              : e.touches[0].clientY;
+          const currentY = e.touches[0].clientY;
           const now = Date.now();
           const dt = now - lastTime;
           if (dt > 0) velocityY = ((lastY - currentY) / dt) * 16;
