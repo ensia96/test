@@ -10,7 +10,6 @@ export default function Session({ websocketURL }: SessionProps) {
   const inputReference = useRef<HTMLTextAreaElement | null>(null);
   const terminalReference = useRef<HTMLDivElement>(null);
   const termReference = useRef<Terminal | null>(null);
-  const touchOverlayReference = useRef<HTMLDivElement>(null);
   const websocketReference = useRef<WebSocket | null>(null);
 
   const [state, setState] = useState<SessionState>({
@@ -225,14 +224,14 @@ export default function Session({ websocketURL }: SessionProps) {
           if (e.key === "Backspace") dataToSend = "\x1b\x7f";
           if (e.key === "Delete") dataToSend = "\x1bd";
           if (e.code.startsWith("Key")) {
-            const ch =
-              e.code.slice(3)[e.shiftKey ? "toUpperCase" : "toLowerCase"]();
+            const ch = e.code
+              .slice(3)
+              [e.shiftKey ? "toUpperCase" : "toLowerCase"]();
             dataToSend = isCtrl
               ? "\x1b" + String.fromCharCode(ch.charCodeAt(0) & 0x1f)
               : "\x1b" + ch;
           }
-          if (e.code.startsWith("Digit"))
-            dataToSend = "\x1b" + e.code.slice(5);
+          if (e.code.startsWith("Digit")) dataToSend = "\x1b" + e.code.slice(5);
           const sym = OPT_CODE_MAP[e.code];
           if (sym) {
             const ch = sym[+e.shiftKey];
@@ -304,7 +303,7 @@ export default function Session({ websocketURL }: SessionProps) {
     window.visualViewport?.addEventListener("scroll", handleResize);
 
     // === 터치 오버레이 처리 ===
-    const overlay = touchOverlayReference.current;
+    const overlay = terminalReference.current;
     let onPointerDown: ((e: PointerEvent) => void) | undefined;
     let onPointerMove: ((e: PointerEvent) => void) | undefined;
     let onPointerUp: ((e: PointerEvent) => void) | undefined;
@@ -340,25 +339,6 @@ export default function Session({ websocketURL }: SessionProps) {
           col: Math.floor((x - rect.left) / cellWidth),
           row: Math.floor((y - rect.top) / cellHeight),
         };
-      };
-
-      const copySelection = () => {
-        const text = term.getSelection();
-        if (!text) return;
-        const fallbackCopy = (str: string) => {
-          const textarea = document.createElement("textarea");
-          textarea.value = str;
-          textarea.style.cssText = "position:fixed;opacity:0;";
-          document.body.appendChild(textarea);
-          textarea.select();
-          document.execCommand("copy");
-          document.body.removeChild(textarea);
-        };
-        if (navigator.clipboard?.writeText) {
-          navigator.clipboard.writeText(text).catch(() => fallbackCopy(text));
-        } else {
-          fallbackCopy(text);
-        }
       };
 
       const scrollUp = () => {
@@ -590,29 +570,9 @@ export default function Session({ websocketURL }: SessionProps) {
             position: "relative",
           },
         }}
-      >
-        <div
-          {...{
-            ref: touchOverlayReference,
-            style: {
-              background: "transparent",
-              bottom: 0,
-              left: 0,
-              position: "absolute",
-              right: 0,
-              top: 0,
-              touchAction: "none",
-              zIndex: 20,
-            },
-          }}
-        />
-      </div>
+      />
 
-      <div
-        {...{
-          style: barMode ? STYLE.KEYBAR : floatingStyle(floatPos),
-        }}
-      >
+      <div {...{ style: barMode ? STYLE.KEYBAR : floatingStyle(floatPos) }}>
         {barMode ? (
           <>
             <div {...{ style: STYLE.GROUP }}>
@@ -1104,10 +1064,7 @@ const STYLE: Record<string, React.CSSProperties> = {
   },
 };
 
-function floatingStyle(pos: {
-  x: number;
-  y: number;
-}): React.CSSProperties {
+function floatingStyle(pos: { x: number; y: number }): React.CSSProperties {
   return {
     backgroundColor: "rgba(29, 32, 33, 0.95)",
     borderRadius: 12,
