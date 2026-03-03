@@ -251,7 +251,7 @@ export default function Session({ websocketURL }: SessionProps) {
     inputReference.current.style.cssText = `
       position: absolute;
       top: 0; left: 0;
-      width: 100%; height: 100%;
+      width: 1px; height: 1px;
       opacity: 0;
       z-index: 10;
       resize: none;
@@ -485,7 +485,10 @@ export default function Session({ websocketURL }: SessionProps) {
       overlay.addEventListener("pointercancel", onPointerCancel, {
         passive: false,
       });
-      overlay.addEventListener("wheel", onWheel, { passive: false });
+      overlay.addEventListener("wheel", onWheel, {
+        capture: true,
+        passive: false,
+      });
     }
 
     // === Visibility Change 핸들러 ===
