@@ -305,9 +305,11 @@ export default function Session({ websocketURL }: SessionProps) {
 
     // === 터치 오버레이 처리 ===
     const overlay = touchOverlayReference.current;
-    let onTouchStart: ((e: TouchEvent) => void) | undefined;
-    let onTouchMove: ((e: TouchEvent) => void) | undefined;
-    let onTouchEnd: ((e: TouchEvent) => void) | undefined;
+    let onPointerDown: ((e: PointerEvent) => void) | undefined;
+    let onPointerMove: ((e: PointerEvent) => void) | undefined;
+    let onPointerUp: ((e: PointerEvent) => void) | undefined;
+    let onPointerCancel: ((e: PointerEvent) => void) | undefined;
+    let onWheel: ((e: WheelEvent) => void) | undefined;
     if (overlay) {
       const TAP_THRESHOLD = 15;
       const TAP_TIMEOUT = 300;
@@ -382,39 +384,34 @@ export default function Session({ websocketURL }: SessionProps) {
         momentumId = requestAnimationFrame(animateMomentum);
       };
 
-      onTouchStart = (e: TouchEvent) => {
+      onPointerDown = (e: PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
         setSelectedText(null);
-        if (e.touches.length === 1) {
-          cancelAnimationFrame(momentumId);
-          startX = e.touches[0].clientX;
-          startY = e.touches[0].clientY;
-          startTime = Date.now();
-          touchMode = "tap";
-          term.clearSelection();
-          const { col, row } = getCell(startX, startY);
-          dragStartCol = col;
-          dragStartRow = row;
-          clearTimeout(longpressTimer);
-          longpressTimer = window.setTimeout(() => {
-            if (touchMode === "tap") {
-              touchMode = "longpress";
-              navigator.vibrate?.(50);
-            }
-          }, LONGPRESS_TIMEOUT);
-        }
+        cancelAnimationFrame(momentumId);
+        startX = e.clientX;
+        startY = e.clientY;
+        startTime = Date.now();
+        touchMode = "tap";
+        term.clearSelection();
+        const { col, row } = getCell(startX, startY);
+        dragStartCol = col;
+        dragStartRow = row;
+        clearTimeout(longpressTimer);
+        longpressTimer = window.setTimeout(() => {
+          if (touchMode === "tap") {
+            touchMode = "longpress";
+            navigator.vibrate?.(50);
+          }
+        }, LONGPRESS_TIMEOUT);
       };
 
-      onTouchMove = (e: TouchEvent) => {
+      onPointerMove = (e: PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
-        if (
-          (touchMode === "tap" || touchMode === "longpress") &&
-          e.touches.length === 1
-        ) {
-          const dx = e.touches[0].clientX - startX;
-          const dy = e.touches[0].clientY - startY;
+        if (touchMode === "tap" || touchMode === "longpress") {
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist > LONGPRESS_THRESHOLD) {
             clearTimeout(longpressTimer);
@@ -424,7 +421,7 @@ export default function Session({ websocketURL }: SessionProps) {
             ) {
               cancelAnimationFrame(momentumId);
               touchMode = "scroll";
-              lastY = e.touches[0].clientY;
+              lastY = e.clientY;
               lastTime = Date.now();
               scrollAccumulated = 0;
               velocityY = 0;
@@ -433,11 +430,8 @@ export default function Session({ websocketURL }: SessionProps) {
             }
           }
         }
-        if (touchMode === "drag" && e.touches.length === 1) {
-          const { col, row } = getCell(
-            e.touches[0].clientX,
-            e.touches[0].clientY,
-          );
+        if (touchMode === "drag") {
+          const { col, row } = getCell(e.clientX, e.clientY);
           const startOffset = dragStartRow * term.cols + dragStartCol;
           const currentOffset = row * term.cols + col;
           if (currentOffset >= startOffset) {
@@ -450,7 +444,7 @@ export default function Session({ websocketURL }: SessionProps) {
             term.select(col, row, startOffset - currentOffset + 1);
           }
         } else if (touchMode === "scroll") {
-          const currentY = e.touches[0].clientY;
+          const currentY = e.clientY;
           const now = Date.now();
           const dt = now - lastTime;
           if (dt > 0) velocityY = ((lastY - currentY) / dt) * 16;
@@ -469,7 +463,7 @@ export default function Session({ websocketURL }: SessionProps) {
         }
       };
 
-      onTouchEnd = (e: TouchEvent) => {
+      onPointerUp = (e: PointerEvent) => {
         e.preventDefault();
         e.stopPropagation();
         clearTimeout(longpressTimer);
@@ -488,10 +482,30 @@ export default function Session({ websocketURL }: SessionProps) {
         touchMode = "none";
       };
 
-      overlay.addEventListener("touchstart", onTouchStart, { passive: false });
-      overlay.addEventListener("touchmove", onTouchMove, { passive: false });
-      overlay.addEventListener("touchend", onTouchEnd, { passive: false });
-      overlay.addEventListener("touchcancel", onTouchEnd, { passive: false });
+      onPointerCancel = (e: PointerEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+        clearTimeout(longpressTimer);
+        touchMode = "none";
+      };
+
+      onWheel = (e: WheelEvent) => {
+        e.preventDefault();
+        if (e.deltaY > 0) scrollDown();
+        else if (e.deltaY < 0) scrollUp();
+      };
+
+      overlay.addEventListener("pointerdown", onPointerDown, {
+        passive: false,
+      });
+      overlay.addEventListener("pointermove", onPointerMove, {
+        passive: false,
+      });
+      overlay.addEventListener("pointerup", onPointerUp, { passive: false });
+      overlay.addEventListener("pointercancel", onPointerCancel, {
+        passive: false,
+      });
+      overlay.addEventListener("wheel", onWheel, { passive: false });
     }
 
     // === Visibility Change 핸들러 ===
@@ -511,11 +525,13 @@ export default function Session({ websocketURL }: SessionProps) {
       window.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("resize", handleResize);
       window.visualViewport?.removeEventListener("scroll", handleResize);
-      if (overlay && onTouchStart && onTouchMove && onTouchEnd) {
-        overlay.removeEventListener("touchstart", onTouchStart);
-        overlay.removeEventListener("touchmove", onTouchMove);
-        overlay.removeEventListener("touchend", onTouchEnd);
-        overlay.removeEventListener("touchcancel", onTouchEnd);
+      if (overlay && onPointerDown && onPointerMove && onPointerUp) {
+        overlay.removeEventListener("pointerdown", onPointerDown);
+        overlay.removeEventListener("pointermove", onPointerMove);
+        overlay.removeEventListener("pointerup", onPointerUp);
+        if (onPointerCancel)
+          overlay.removeEventListener("pointercancel", onPointerCancel);
+        if (onWheel) overlay.removeEventListener("wheel", onWheel);
       }
       fitReference.current = null;
       inputReference.current?.remove();
